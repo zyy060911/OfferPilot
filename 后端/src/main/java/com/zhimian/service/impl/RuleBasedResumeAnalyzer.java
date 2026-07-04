@@ -42,7 +42,7 @@ public class RuleBasedResumeAnalyzer implements ResumeAnalyzer {
     );
 
     /** 项目段落的起始标志词 */
-    private static final Pattern PROJECT_SPLIT = Pattern.compile(
+    public static final Pattern PROJECT_SPLIT = Pattern.compile(
             "(?=项目名称|项目经历|项目经验|项目背景|项目描述|实习经历|实习经验|工作经历|【项目)");
 
     @Override

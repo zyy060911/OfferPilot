@@ -35,5 +35,17 @@ export const getNextQuestion = (sessionId) => request.get(`/interview/${sessionI
 /** 结束面试 → reportId（用于跳转报告页） */
 export const finishInterview = (sessionId) => request.post(`/interview/${sessionId}/finish`)
 
+/** 上传简历文件(PDF/DOC/DOCX)，返回提取后的个人画像 */
+export const uploadResumeFile = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/resume/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+/** 获取从文件上传提取的个人画像 */
+export const getResumeFileProfile = () => request.get('/resume/file-profile')
+
 /** 能力报告详情 → { reportId, jobName, totalScore, summary, strengths, weaknesses, suggestions, weakTags, dimensions } */
 export const getReportDetail = (reportId) => request.get(`/report/${reportId}`)
