@@ -110,6 +110,13 @@
         <el-button :icon="HomeFilled" @click="router.push('/home')">返回首页</el-button>
         <el-button :icon="Tickets" @click="router.push('/history')">查看历史记录</el-button>
         <el-button type="primary" :icon="RefreshRight" @click="retrain">再次训练</el-button>
+        <el-divider direction="vertical" style="height: 28px;" />
+        <el-button :icon="Download" @click="handleExport('pdf')" :loading="exportingPdf">
+          导出 PDF
+        </el-button>
+        <el-button :icon="Download" @click="handleExport('docx')" :loading="exportingDocx">
+          导出 Word
+        </el-button>
       </div>
     </template>
   </div>
@@ -123,6 +130,7 @@ import {
   Aim,
   CircleCheckFilled,
   DataAnalysis,
+  Download,
   HomeFilled,
   MagicStick,
   Memo,
@@ -130,7 +138,7 @@ import {
   Tickets,
   WarningFilled
 } from '@element-plus/icons-vue'
-import { getReportDetail, getInterviewRecords } from '@/api'
+import { getReportDetail, getInterviewRecords, exportReport } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -212,6 +220,37 @@ const retrain = () => {
   const query = {}
   if (report.value?.weakTags) query.weakTags = report.value.weakTags
   router.push({ path: '/jobs', query })
+}
+
+// ---------- 报告导出 ----------
+import { ElMessage } from 'element-plus'
+
+const exportingPdf = ref(false)
+const exportingDocx = ref(false)
+
+const handleExport = async (format) => {
+  const loadingRef = format === 'pdf' ? exportingPdf : exportingDocx
+  if (loadingRef.value) return // 防重复点击
+  loadingRef.value = true
+  try {
+    const blob = await exportReport(report.value.reportId, format)
+    const ext = format === 'pdf' ? 'pdf' : 'docx'
+    const safeJobName = (report.value.jobName || '报告').replace(/[\\/:*?"<>|]/g, '_')
+    const fileName = `面试报告_${safeJobName}_${report.value.reportId}.${ext}`
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (e) {
+    // 错误已在 download.js 拦截器中处理（ElMessage.error），此处仅防重复点击解锁
+  } finally {
+    loadingRef.value = false
+  }
 }
 
 const loadReport = async (reportId) => {

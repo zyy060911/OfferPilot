@@ -3,6 +3,7 @@
 *.class
 *.jar
 !后端/.mvn/wrapper/maven-wrapper.jar
+!后端/libs/*.jar
 *.log
 后端/run.log
 后端/run.err.log
