@@ -21,6 +21,8 @@
         <java.version>17</java.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <jjwt.version>0.12.5</jjwt.version>
+        <!-- 覆盖 Spring Boot 3.2.5 内置的 Lombok 1.18.30，以兼容 JDK 26 -->
+        <lombok.version>1.18.36</lombok.version>
     </properties>
 
     <dependencies>
@@ -75,6 +77,84 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- documents4j: HTML → PDF/DOCX 转换（需本机安装 MS Word 2007+）。
+             依赖 JAR 存放于 libs/，以 system scope 引用，团队成员无需额外构建。 -->
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-api</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-api-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-util-all</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-util-all-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-util-conversion</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-util-conversion-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-transformer-api</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-transformer-api-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-transformer</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-transformer-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-util-transformer-process</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-util-transformer-process-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-transformer-msoffice-base</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-transformer-msoffice-base-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-transformer-msoffice-word</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-transformer-msoffice-word-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-local</artifactId>
+            <version>1.1.14</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/documents4j-local-1.1.14-SNAPSHOT.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>org.zeroturnaround</groupId>
+            <artifactId>zt-exec</artifactId>
+            <version>1.11</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/zt-exec-1.11.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>33.0.0-jre</version>
+        </dependency>
+
         <!-- 工具 -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -96,6 +176,8 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <!-- 允许 system scope 的 JAR 打入 fat jar，使团队成员无需单独构建 documents4j -->
+                    <includeSystemScope>true</includeSystemScope>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
