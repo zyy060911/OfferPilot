@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import downloadRequest from '@/utils/download'
 
 export const login = (data) => request.post('/auth/login', data)
 
@@ -37,3 +38,15 @@ export const finishInterview = (sessionId) => request.post(`/interview/${session
 
 /** 能力报告详情 → { reportId, jobName, totalScore, summary, strengths, weaknesses, suggestions, weakTags, dimensions } */
 export const getReportDetail = (reportId) => request.get(`/report/${reportId}`)
+
+/**
+ * 导出报告为 PDF 或 Word 文件（返回 Blob，由调用方触发浏览器下载）。
+ * @param {number} reportId
+ * @param {'pdf'|'docx'} format
+ * @returns {Promise<Blob>}
+ */
+export const exportReport = (reportId, format = 'pdf') =>
+  downloadRequest.get(`/report/${reportId}/export`, {
+    params: { format },
+    responseType: 'blob'
+  })
