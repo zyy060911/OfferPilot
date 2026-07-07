@@ -36,10 +36,10 @@ const routes = [
         meta: { title: '面试准备' }
       },
       {
-        path: 'resume',
-        name: 'Resume',
-        component: () => import('@/views/Resume.vue'),
-        meta: { title: '简历画像' }
+        path: 'confirm',
+        name: 'Confirm',
+        component: () => import('@/views/Confirm.vue'),
+        meta: { title: '确认信息' }
       },
       {
         path: 'interview',

@@ -133,7 +133,7 @@
         <section class="panel profile-panel">
           <header class="panel-header">
             <h2>个人画像</h2>
-            <router-link to="/resume">去完善 <el-icon><ArrowRight /></el-icon></router-link>
+            <router-link to="/jobs">去完善 <el-icon><ArrowRight /></el-icon></router-link>
           </header>
           <div v-if="skills.length" class="skill-tags">
             <span v-for="s in skills" :key="s">{{ s }}</span>

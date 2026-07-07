@@ -115,7 +115,7 @@
 
         <section class="form-panel">
           <h2>4. 简历 / 项目经验</h2>
-          <el-upload class="resume-upload" action="#" :auto-upload="false" drag>
+          <el-upload class="resume-upload" action="#" :auto-upload="false" drag @change="handleUploadChange">
             <el-icon><Upload /></el-icon>
             <span>点击上传简历 <small>（PDF/DOC/DOCX，≤ 10MB）</small></span>
             <em>或拖拽文件到此处上传</em>
@@ -190,6 +190,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useInterviewPrepStore } from '@/store/interviewPrep'
 import {
   Aim,
   Calendar,
@@ -211,6 +212,7 @@ import {
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const prepStore = useInterviewPrepStore()
 
 const steps = ['基本信息', '岗位选择', '简历上传', '准备完成']
 
@@ -238,6 +240,11 @@ const skills = ['Java', 'Spring Boot', 'MySQL', 'Redis', 'Vue', 'Python']
 const selectedId = ref(null)
 const selectedSkills = ref([])
 const projectExperience = ref('')
+const resumeFileName = ref('')
+
+const handleUploadChange = (file) => {
+  resumeFileName.value = file.name || ''
+}
 
 const selectedJob = computed(() => jobOptions.find((job) => job.id === selectedId.value) || null)
 
@@ -259,14 +266,16 @@ const toggleSkill = (skill) => {
 
 const startInterview = () => {
   if (!selectedId.value) return
-  router.push({
-    path: '/resume',
-    query: {
-      jobId: selectedId.value,
-      difficulty: interview.difficulty,
-      duration: interview.duration
-    }
+  prepStore.savePrepData({
+    candidate,
+    interview,
+    selectedId: selectedId.value,
+    selectedJobName: selectedJob.value?.name || '',
+    selectedSkills: selectedSkills.value,
+    resumeFileName: resumeFileName.value,
+    projectExperience: projectExperience.value
   })
+  router.push({ path: '/confirm' })
 }
 </script>
 

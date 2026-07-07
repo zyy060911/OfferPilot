@@ -10,7 +10,7 @@ spring:
     username: root
     # 数据库密码：优先读环境变量 DB_PASSWORD；未设置时回退到本地开发默认值 123456。
     # 生产环境请用 prod profile（application-prod.yml），那里强制要求注入 DB_PASSWORD。
-    password: ${DB_PASSWORD:123456}
+    password: ${DB_PASSWORD:'123456'}
 
 mybatis-plus:
   configuration:
