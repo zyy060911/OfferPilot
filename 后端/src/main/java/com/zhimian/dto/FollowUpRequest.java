@@ -20,4 +20,7 @@ public class FollowUpRequest {
     /** 考生对该问题的回答 */
     @NotBlank(message = "回答不能为空")
     private String answer;
+
+    /** 题库参考答案（供 DeepSeek 对比面试者回答与标准答案，决定是否追问） */
+    private String referenceAnswer;
 }

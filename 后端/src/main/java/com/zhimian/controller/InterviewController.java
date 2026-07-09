@@ -1,13 +1,21 @@
 package com.zhimian.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zhimian.common.BizException;
 import com.zhimian.common.Result;
+import com.zhimian.config.UserContext;
 import com.zhimian.dto.AnswerRequest;
 import com.zhimian.dto.FollowUpRequest;
 import com.zhimian.dto.FollowUpResponse;
 import com.zhimian.dto.InterviewRecord;
 import com.zhimian.dto.InterviewStartResponse;
 import com.zhimian.dto.InterviewStep;
+import com.zhimian.dto.MessageView;
 import com.zhimian.dto.StartInterviewRequest;
+import com.zhimian.entity.InterviewMessage;
+import com.zhimian.entity.InterviewSession;
+import com.zhimian.mapper.InterviewMessageMapper;
+import com.zhimian.mapper.InterviewSessionMapper;
 import com.zhimian.service.FollowUpService;
 import com.zhimian.service.InterviewFlowService;
 import com.zhimian.service.InterviewRecordService;
@@ -21,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 面试接口（会话 / 记录 / 规则化面试流程）。
@@ -33,6 +42,8 @@ public class InterviewController {
     private final InterviewRecordService recordService;
     private final InterviewFlowService flowService;
     private final FollowUpService followUpService;
+    private final InterviewSessionMapper sessionMapper;
+    private final InterviewMessageMapper messageMapper;
 
     /** 当前用户的面试记录列表（真实数据，无记录则为空数组） */
     @GetMapping("/records")
@@ -73,5 +84,38 @@ public class InterviewController {
     @PostMapping("/follow-up")
     public Result<FollowUpResponse> followUp(@Valid @RequestBody FollowUpRequest req) {
         return Result.success(followUpService.generate(req));
+    }
+
+    /**
+     * 获取某一个面试会话的全部问答消息（按时间顺序）。
+     * 返回 INTERVIEWER 和 CANDIDATE 的所有消息，供前端展示 Q&A 历史。
+     */
+    @GetMapping("/{sessionId}/messages")
+    public Result<List<MessageView>> messages(@PathVariable Long sessionId) {
+        InterviewSession session = sessionMapper.selectById(sessionId);
+        if (session == null || !session.getUserId().equals(UserContext.getUserId())) {
+            throw new BizException("无权查看该会话");
+        }
+
+        List<InterviewMessage> msgs = messageMapper.selectList(
+                new LambdaQueryWrapper<InterviewMessage>()
+                        .eq(InterviewMessage::getSessionId, sessionId)
+                        .orderByAsc(InterviewMessage::getId));
+
+        List<MessageView> views = msgs.stream().map(m -> {
+            MessageView v = new MessageView();
+            v.setId(m.getId());
+            v.setSessionId(m.getSessionId());
+            v.setQuestionId(m.getQuestionId());
+            v.setRoundNo(m.getRoundNo());
+            v.setRole(m.getRole());
+            v.setMsgType(m.getMsgType());
+            v.setQuestionType(m.getQuestionType());
+            v.setContent(m.getContent());
+            v.setAbilityTag(m.getAbilityTag());
+            v.setCreateTime(m.getCreateTime());
+            return v;
+        }).collect(Collectors.toList());
+        return Result.success(views);
     }
 }

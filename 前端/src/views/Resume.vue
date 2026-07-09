@@ -219,9 +219,10 @@ const goInterview = () => {
     return
   }
   entering.value = true
+  const duration = route.query.duration || 1800 // 默认 30 分钟（秒）
   // JobSelect 传来的 difficulty 是中文字符串，这里统一归一为 1/2/3
   const d = difficultyMap[difficulty] || Number(difficulty) || 2
-  router.push({ path: '/interview', query: { jobId, difficulty: d, resumeReady: 1 } })
+  router.push({ path: '/interview', query: { jobId, difficulty: d, duration, resumeReady: 1 } })
 }
 
 onMounted(async () => {

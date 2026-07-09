@@ -122,7 +122,7 @@ const sidebarCollapsed = ref(false)
 const keyword = ref('')
 const notificationCount = ref(0)
 
-// 学生端菜单（保持原样）
+// 学生端菜单
 const studentNav = [
   { path: '/home', label: '首页', icon: HomeFilled },
   { path: '/jobs', label: '面试准备', icon: EditPen },

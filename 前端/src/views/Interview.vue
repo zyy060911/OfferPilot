@@ -30,8 +30,8 @@
           </strong>
         </div>
         <div>
-          <span>已用时长</span>
-          <strong>{{ timeText }}</strong>
+          <span>剩余时间</span>
+          <strong :class="{ 'time-warning': timeWarning, 'time-urgent': timeUrgent }">{{ timeText }}</strong>
         </div>
         <div>
           <span>当前轮次</span>
@@ -48,9 +48,9 @@
           <h3>AI 面试官</h3>
           <p class="role-tag">{{ jobName || '智面幻境' }}</p>
           <ul class="tips">
-            <li><el-icon><ChatLineRound /></el-icon>回答尽量结合具体项目</li>
+            <li><el-icon><ChatLineRound /></el-icon>回答可以结合具体项目</li>
             <li><el-icon><Aim /></el-icon>覆盖关键技术点更易得分</li>
-            <li><el-icon><MagicStick /></el-icon>回答含糊会触发追问</li>
+            <li><el-icon><MagicStick /></el-icon>回答越模糊越易触发追问</li>
           </ul>
         </aside>
 
@@ -60,16 +60,40 @@
             <!-- 主问题 -->
             <div v-if="currentQuestion" class="bubble interviewer">
               <span class="bubble-role">面试官 · 第 {{ currentQuestion.roundNo }} 轮</span>
-              <p class="bubble-text">{{ currentQuestion.content }}</p>
+              <p class="bubble-text">
+                <el-tag v-if="currentQuestion.questionType === 'EXPERIENCE'"
+                        type="warning" size="small" effect="dark" class="exp-tag">
+                  经历题
+                </el-tag>
+                {{ currentQuestion.content }}
+              </p>
               <el-tag v-if="currentQuestion.abilityTag" size="small" effect="plain" class="ability">
                 {{ currentQuestion.abilityTag }}
               </el-tag>
+            </div>
+
+            <!-- 主问题回答回顾（追问时 / 提交后均可展开） -->
+            <div v-if="lastAnswer && stage !== 'answering' && stage !== 'loading'" class="last-answer-area">
+              <div class="last-answer-toggle" @click="showLastAnswer = !showLastAnswer">
+                <el-icon><component :is="showLastAnswer ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
+                <span>你的回答（原题）</span>
+              </div>
+              <p v-show="showLastAnswer" class="last-answer-text">{{ lastAnswer }}</p>
             </div>
 
             <!-- 追问 -->
             <div v-if="followupText" class="bubble followup">
               <span class="bubble-role"><el-icon><Connection /></el-icon>追问</span>
               <p class="bubble-text">{{ followupText }}</p>
+            </div>
+
+            <!-- 追问回答回顾（追问提交后展示） -->
+            <div v-if="followupAnswer" class="last-answer-area followup-answer">
+              <div class="last-answer-toggle" @click="showFollowupAnswer = !showFollowupAnswer">
+                <el-icon><component :is="showFollowupAnswer ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
+                <span>你的回答（追问）</span>
+              </div>
+              <p v-show="showFollowupAnswer" class="last-answer-text">{{ followupAnswer }}</p>
             </div>
 
             <!-- 结束提示 -->
@@ -159,6 +183,10 @@ const currentQuestion = ref(null) // { id, content, abilityTag, roundNo }
 const followupText = ref('')
 const answer = ref('')
 const roundNo = ref(1)
+const lastAnswer = ref('')         // 主问题的回答
+const followupAnswer = ref('')    // 追问的回答
+const showLastAnswer = ref(false)
+const showFollowupAnswer = ref(false)
 
 // stage: loading / answering / followup / canNext / finishable / finished / error
 const stage = ref('loading')
@@ -169,13 +197,18 @@ const loadingNext = ref(false)
 const finishing = ref(false)
 const starting = ref(false) // 防止同一次挂载内重复触发 startInterview
 
-// ------- 计时器 -------
-const elapsed = ref(0)
+// ------- 计时器（倒计时） -------
+const durationSeconds = ref(Number(route.query.duration) || 1800)
+const remaining = ref(durationSeconds.value)
 let timer = null
 const startTimer = () => {
   stopTimer()
   timer = setInterval(() => {
-    elapsed.value += 1
+    remaining.value -= 1
+    if (remaining.value <= 0) {
+      stopTimer()
+      handleFinish()
+    }
   }, 1000)
 }
 const stopTimer = () => {
@@ -185,10 +218,14 @@ const stopTimer = () => {
   }
 }
 const timeText = computed(() => {
-  const m = String(Math.floor(elapsed.value / 60)).padStart(2, '0')
-  const s = String(elapsed.value % 60).padStart(2, '0')
-  return `${m}:${s}`
+  const total = Math.max(0, remaining.value)
+  const h = Math.floor(total / 3600)
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
+  const s = String(total % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`
 })
+const timeWarning = computed(() => remaining.value <= 60)
+const timeUrgent = computed(() => remaining.value <= 300 && remaining.value > 60)
 
 // ------- 派生状态 -------
 const canAnswer = computed(() => stage.value === 'answering' || stage.value === 'followup')
@@ -216,10 +253,19 @@ const handleSubmit = async () => {
   if (!canSubmit.value) return
   submitting.value = true
   try {
+    const myAnswer = answer.value.trim()
     const step = await submitAnswer(sessionId.value, {
       questionId: currentQuestion.value.id,
-      answer: answer.value.trim()
+      answer: myAnswer
     })
+    // 区分主问题回答与追问回答
+    if (stage.value === 'followup') {
+      followupAnswer.value = myAnswer
+    } else {
+      lastAnswer.value = myAnswer
+      followupAnswer.value = ''
+    }
+    showLastAnswer.value = false
     answer.value = ''
     applyStep(step)
   } finally {
@@ -234,7 +280,7 @@ const applyStep = (step) => {
     stage.value = 'followup'
     ElMessage.info('面试官追问了一个问题')
   } else if (action === 'NEXT') {
-    followupText.value = ''
+    // 保留 followupText 以便用户在 canNext 阶段回顾追问内容
     stage.value = 'canNext'
     ElMessage.success('回答已记录，可进入下一题')
   } else {
@@ -254,6 +300,9 @@ const handleNext = async () => {
       currentQuestion.value = step.question
       roundNo.value = step.question.roundNo
       followupText.value = ''
+      lastAnswer.value = ''
+      followupAnswer.value = ''
+      showLastAnswer.value = false
       stage.value = 'answering'
     } else {
       stage.value = 'finishable'
@@ -269,12 +318,12 @@ const handleFinish = async () => {
   try {
     const reportId = await finishInterview(sessionId.value)
     stopTimer()
-    stage.value = 'finished'
     if (reportId) {
       ElMessage.success('面试已结束，正在生成能力报告')
       router.push({ path: '/report', query: { reportId } })
     } else {
-      ElMessage.success('面试已结束，正在前往面试记录')
+      stage.value = 'finished'
+      ElMessage.success('面试已结束')
       router.push('/history')
     }
   } finally {
@@ -296,7 +345,8 @@ onMounted(async () => {
   try {
     const data = await startInterview({
       jobId: Number(jobId),
-      difficulty: Number(difficulty) || 2
+      difficulty: Number(difficulty) || 2,
+      durationSeconds: durationSeconds.value
     })
     sessionId.value = data.sessionId
     jobName.value = data.jobName
@@ -385,6 +435,19 @@ onUnmounted(stopTimer)
 
 .dot.done {
   background: var(--primary);
+}
+
+.time-warning {
+  color: #e63434 !important;
+}
+
+.time-urgent {
+  color: #e6a817 !important;
+}
+
+.exp-tag {
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 /* 房间布局 */
@@ -517,6 +580,50 @@ onUnmounted(stopTimer)
 
 .bubble.followup .bubble-text {
   color: #3a2a63;
+}
+
+/* 上一轮回答折叠区 */
+.last-answer-area {
+  margin-top: -4px;
+  border: 1px dashed rgba(140, 140, 160, 0.35);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.last-answer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.last-answer-toggle:hover {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.last-answer-toggle .el-icon {
+  font-size: 14px;
+  transition: transform 0.2s;
+}
+
+.last-answer-text {
+  margin: 0;
+  padding: 0 14px 14px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.last-answer-area.followup-answer {
+  border-color: rgba(140, 87, 255, 0.25);
+  background: rgba(140, 87, 255, 0.03);
 }
 
 .finish-hint {

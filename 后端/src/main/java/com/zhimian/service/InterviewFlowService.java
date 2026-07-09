@@ -14,29 +14,33 @@ import com.zhimian.entity.InterviewFollowupRecord;
 import com.zhimian.entity.InterviewMessage;
 import com.zhimian.entity.InterviewSession;
 import com.zhimian.entity.JobPosition;
-import com.zhimian.entity.Question;
 import com.zhimian.entity.Resume;
+import com.zhimian.entity.SkillQuestion;
+import com.zhimian.entity.SkillQuestionTagRel;
+import com.zhimian.entity.SkillTag;
 import com.zhimian.mapper.InterviewMessageMapper;
 import com.zhimian.mapper.InterviewSessionMapper;
 import com.zhimian.mapper.JobPositionMapper;
-import com.zhimian.mapper.QuestionMapper;
+import com.zhimian.mapper.SkillQuestionMapper;
+import com.zhimian.mapper.SkillQuestionTagRelMapper;
+import com.zhimian.mapper.SkillTagMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 面试流程服务（Phase 1 规则化）：开始会话 → 提交回答（规则化追问）→ 下一题 → 结束。
- * 全程不依赖会话表上的轮次/进度字段，轮次与“已问题目”均由 interview_message 推导，
- * 因此 start / answer / next 共用同一套确定性候选题查询，逻辑不会漂移。
- * 报告生成留待 Phase 2，finish 仅关闭会话。
+ * 面试流程服务：标签化出题 + 规则化追问。
+ * 从用户个人画像标签中随机选题，追问逻辑保持不变。
  */
 @Slf4j
 @Service
@@ -45,15 +49,22 @@ public class InterviewFlowService {
 
     private final InterviewSessionMapper sessionMapper;
     private final InterviewMessageMapper messageMapper;
-    private final QuestionMapper questionMapper;
     private final JobPositionMapper jobMapper;
     private final ResumeService resumeService;
     private final ReportService reportService;
     private final FollowUpService followUpService;
     private final InterviewFollowupRecordService followupRecordService;
+    private final ExperienceQuestionService experienceQuestionService;
 
-    /** 一次面试最多主问题数 */
-    private static final int MAX_QUESTIONS = 5;
+    // 新标签化题库
+    private final SkillQuestionMapper skillQuestionMapper;
+    private final SkillTagMapper skillTagMapper;
+    private final SkillQuestionTagRelMapper skillQuestionTagRelMapper;
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** 候选题目池上限 */
+    private static final int CANDIDATE_POOL_MAX = 100;
 
     private static final String STATUS_ONGOING = "ONGOING";
     private static final String STATUS_FINISHED = "FINISHED";
@@ -65,58 +76,67 @@ public class InterviewFlowService {
     private static final String MSG_FOLLOWUP = "FOLLOWUP";
     private static final String MSG_ANSWER = "ANSWER";
 
-    private static final String TYPE_MAIN = "MAIN";
-
     /** nextAction 取值 */
     private static final String ACTION_FOLLOWUP = "FOLLOWUP";
     private static final String ACTION_NEXT = "NEXT";
     private static final String ACTION_FINISHABLE = "FINISHABLE";
 
-    /** 项目信号词：回答中出现则视为有项目细节 */
-    private static final List<String> PROJECT_SIGNALS =
-            Arrays.asList("项目", "负责", "实现", "实践", "经历", "做过", "我们", "系统", "搭建", "设计");
+    // ============================ 体验式题目 ============================
 
-    /** 含糊词：出现则触发追问 */
-    private static final List<String> VAGUE_WORDS =
-            Arrays.asList("大概", "可能", "应该", "不太清楚", "不知道", "不清楚", "忘了", "不会", "没用过", "不了解");
+    /** 体验式题目内容前缀（测试阶段标记），上线后设为 "" 即可移除 */
+    private static final String EXPERIENCE_QUESTION_PREFIX = "[测试] ";
+
+    /** 体验式题目块大小：每 N 题一个块，块内必含 1 道体验式题目 */
+    private static final int EXPERIENCE_BLOCK_SIZE = 5;
+
+    /** 体验式题目开始的最小题号（前 N-1 题不出现体验题） */
+    private static final int EXPERIENCE_FIRST_BLOCK_SLOT = 5;
+
+    private static final String QUESTION_TYPE_SKILL = "SKILL";
+    private static final String QUESTION_TYPE_EXPERIENCE = "EXPERIENCE";
 
     // ============================ 1. 开始面试 ============================
 
     public InterviewStartResponse start(StartInterviewRequest req) {
         Long userId = UserContext.getUserId();
         int difficulty = normalizeDifficulty(req.getDifficulty());
+        int duration = (req.getDurationSeconds() != null && req.getDurationSeconds() > 0)
+                ? req.getDurationSeconds() : 1800; // 默认 30 分钟
 
         JobPosition job = jobMapper.selectById(req.getJobId());
         if (job == null) {
             throw new BizException("岗位不存在");
         }
 
-        List<Question> candidates = candidateQuestions(req.getJobId(), difficulty);
-        if (candidates.isEmpty()) {
-            throw new BizException("该岗位暂无题目，请先导入题库");
-        }
-
-        // resumeId 始终按当前用户解析，忽略任何前端传入值
+        // 获取用户简历画像标签
         Resume resume = resumeService.getMine();
         Long resumeId = (resume != null) ? resume.getId() : null;
+        List<String> userTags = extractTagsFromResume(resume);
+
+        // 标签化选题：匹配画像标签 → 对应题库随机抽取
+        List<SkillQuestion> candidates = candidateQuestionsByTags(userTags, difficulty);
+        if (candidates.isEmpty()) {
+            throw new BizException("未找到匹配的面试题目，请先完善个人简历画像或扩充题库");
+        }
 
         InterviewSession session = new InterviewSession();
         session.setUserId(userId);
         session.setJobId(req.getJobId());
         session.setResumeId(resumeId);
         session.setDifficulty(difficulty);
+        session.setDurationSeconds(duration);
         session.setStatus(STATUS_ONGOING);
         session.setIsRetrain(0);
-        // startTime 由数据库默认值填充
         sessionMapper.insert(session);
 
-        Question first = candidates.get(0);
-        saveInterviewerQuestion(session.getId(), first, MSG_MAIN, 1, first.getContent());
+        SkillQuestion first = candidates.get(0);
+        String abilityTag = resolveAbilityTag(first.getId());
+        saveInterviewerMessage(session.getId(), first.getId(), MSG_MAIN, 1, first.getContent(), abilityTag);
 
         InterviewStartResponse resp = new InterviewStartResponse();
         resp.setSessionId(session.getId());
         resp.setJobName(job.getName());
-        resp.setQuestion(toView(first, 1));
+        resp.setQuestion(toView(first, 1, abilityTag));
         return resp;
     }
 
@@ -125,7 +145,6 @@ public class InterviewFlowService {
     public InterviewStep answer(Long sessionId, AnswerRequest req) {
         InterviewSession session = requireOngoingSession(sessionId);
 
-        // 找到该题对应的主问消息，回答/追问都沿用其轮次
         InterviewMessage parentMain = messageMapper.selectOne(
                 new LambdaQueryWrapper<InterviewMessage>()
                         .eq(InterviewMessage::getSessionId, sessionId)
@@ -138,13 +157,12 @@ public class InterviewFlowService {
         }
         int round = parentMain.getRoundNo();
 
-        // 保存考生回答
         saveMessage(sessionId, req.getQuestionId(), round, ROLE_CANDIDATE, MSG_ANSWER,
                 req.getAnswer(), parentMain.getAbilityTag());
 
-        Question question = questionMapper.selectById(req.getQuestionId());
+        SkillQuestion question = skillQuestionMapper.selectById(req.getQuestionId());
+        String abilityTag = parentMain.getAbilityTag();
 
-        // 每题至多追问一次：已存在追问则不再追问（也用于区分主问回答 vs 追问回答）
         boolean followupExists = messageMapper.selectCount(
                 new LambdaQueryWrapper<InterviewMessage>()
                         .eq(InterviewMessage::getSessionId, sessionId)
@@ -152,22 +170,24 @@ public class InterviewFlowService {
                         .eq(InterviewMessage::getMsgType, MSG_FOLLOWUP)) > 0;
 
         InterviewStep step = new InterviewStep();
-        if (!followupExists && shouldFollowUp(req.getAnswer(), question)) {
-            // 生成追问（内部含 source / triggerReason，仅用于落库，不回传前端）
-            FollowupResult followup = generateFollowup(session, question, req.getAnswer());
+        if (!followupExists && shouldFollowUp(req.getAnswer())) {
+            FollowupResult followup = generateFollowup(session, question, abilityTag,
+                    req.getAnswer(), parentMain.getReferenceAnswer());
+            if (followup == null) {
+                // AI 判定无需追问，直接进入下一题
+                step.setNextAction(hasRemainingQuestions(session) ? ACTION_NEXT : ACTION_FINISHABLE);
+                return step;
+            }
             saveMessage(sessionId, req.getQuestionId(), round, ROLE_INTERVIEWER, MSG_FOLLOWUP,
-                    followup.followUpQuestion, parentMain.getAbilityTag());
+                    followup.followUpQuestion, abilityTag);
 
-            // 仅在确实生成追问时落一条追问记录（实验分析用），失败不影响面试
-            saveFollowupRecord(session, question, req, parentMain.getAbilityTag(), followup);
+            saveFollowupRecord(session, question, req, abilityTag, followup);
 
             step.setNextAction(ACTION_FOLLOWUP);
-            // 注意：仅回传追问文案，私有结果对象不暴露给前端，响应结构保持不变
             step.setFollowupQuestion(followup.followUpQuestion);
             return step;
         }
 
-        // 不追问：用共享逻辑判断还有没有没问过的主问题
         step.setNextAction(hasRemainingQuestions(session) ? ACTION_NEXT : ACTION_FINISHABLE);
         return step;
     }
@@ -176,38 +196,51 @@ public class InterviewFlowService {
 
     public InterviewStep next(Long sessionId) {
         InterviewSession session = requireOngoingSession(sessionId);
-
-        List<Question> candidates = candidateQuestions(session.getJobId(), session.getDifficulty());
         Set<Long> asked = askedMainQuestionIds(sessionId);
 
-        Question nextQuestion = candidates.stream()
+        InterviewStep step = new InterviewStep();
+
+        // 时间到 → 结束面试（前端计时器为主控，后端作为安全网）
+        if (isTimeExceeded(session)) {
+            step.setNextAction(ACTION_FINISHABLE);
+            return step;
+        }
+
+        Resume resume = resumeService.getMine();
+        List<String> userTags = extractTagsFromResume(resume);
+        List<SkillQuestion> candidates = candidateQuestionsByTags(userTags, session.getDifficulty());
+
+        SkillQuestion nextQuestion = candidates.stream()
                 .filter(q -> !asked.contains(q.getId()))
                 .findFirst()
                 .orElse(null);
 
-        InterviewStep step = new InterviewStep();
         if (nextQuestion == null) {
             step.setNextAction(ACTION_FINISHABLE);
             return step;
         }
 
-        int round = asked.size() + 1; // 提问前统计，故为新一轮编号
-        saveInterviewerQuestion(sessionId, nextQuestion, MSG_MAIN, round, nextQuestion.getContent());
+        int round = asked.size() + 1;
+
+        // 判断本轮是否为体验式题目槽位
+        if (isExperienceQuestionSlot(sessionId, round)) {
+            InterviewStep expStep = buildExperienceQuestionStep(session, round);
+            if (expStep != null) {
+                return expStep;
+            }
+            // 体验题生成失败 → 回退到题库选题（继续往下走）
+        }
+
+        String abilityTag = resolveAbilityTag(nextQuestion.getId());
+        saveInterviewerMessage(sessionId, nextQuestion.getId(), MSG_MAIN, round, nextQuestion.getContent(), abilityTag);
 
         step.setNextAction(ACTION_NEXT);
-        step.setQuestion(toView(nextQuestion, round));
+        step.setQuestion(toView(nextQuestion, round, abilityTag));
         return step;
     }
 
     // ============================ 4. 结束面试 ============================
 
-    /**
-     * 结束面试并生成报告（Phase 2）。幂等：
-     *  - 已 FINISHED 且报告已存在 → 返回已有 reportId；
-     *  - 已 FINISHED 但无报告 → 补生成报告；
-     *  - 进行中 → 置 FINISHED、补 endTime，再生成报告。
-     * 返回 reportId（非 sessionId）。
-     */
     public Long finish(Long sessionId) {
         InterviewSession session = sessionMapper.selectById(sessionId);
         if (session == null) {
@@ -223,27 +256,118 @@ public class InterviewFlowService {
             }
             sessionMapper.updateById(session);
         }
-        // 生成报告（内部幂等：已存在则返回原 reportId）
         return reportService.generateForSession(session);
     }
 
-    // ============================ 共享辅助逻辑 ============================
+    // ============================ 标签化出题 ============================
 
     /**
-     * 候选题：同岗位、MAIN 主问、难度 <= 目标难度，按 id 升序取前 N。
-     * 必须确定性（id 升序）—— start/answer/next 多次调用要保证“已问集合”稳定。
+     * 从用户简历画像中提取技能标签名列表。
      */
-    private List<Question> candidateQuestions(Long jobId, Integer difficulty) {
-        return questionMapper.selectList(
-                new LambdaQueryWrapper<Question>()
-                        .eq(Question::getJobId, jobId)
-                        .eq(Question::getType, TYPE_MAIN)
-                        .le(Question::getDifficulty, difficulty)
-                        .orderByAsc(Question::getId)
-                        .last("LIMIT " + MAX_QUESTIONS));
+    private List<String> extractTagsFromResume(Resume resume) {
+        if (resume == null) return Collections.emptyList();
+
+        List<String> tags = new ArrayList<>();
+        tags.addAll(parseJsonList(resume.getSkills()));
+        tags.addAll(parseJsonList(resume.getKeywords()));
+        return tags.stream().distinct().collect(Collectors.toList());
     }
 
-    /** 本会话已经问过的主问题目ID集合 */
+    /**
+     * 根据用户标签匹配题目：优先匹配多标签重合题，然后随机排序。
+     */
+    private List<SkillQuestion> candidateQuestionsByTags(List<String> userTags, int difficulty) {
+        // Step 1: 将用户标签名匹配到 skill_tag ID
+        List<Long> matchedTagIds = matchTagIds(userTags);
+
+        // Step 2: 从关联表取出匹配标签的题目ID
+        List<Long> questionIds;
+        if (!matchedTagIds.isEmpty()) {
+            List<SkillQuestionTagRel> rels = skillQuestionTagRelMapper.selectList(
+                    new LambdaQueryWrapper<SkillQuestionTagRel>()
+                            .in(SkillQuestionTagRel::getTagId, matchedTagIds));
+            questionIds = rels.stream()
+                    .map(SkillQuestionTagRel::getQuestionId)
+                    .distinct()
+                    .collect(Collectors.toList());
+        } else {
+            // 没有匹配的标签 → 从全库随机取
+            List<SkillQuestion> all = skillQuestionMapper.selectList(
+                    new LambdaQueryWrapper<SkillQuestion>()
+                            .le(SkillQuestion::getDifficulty, difficulty));
+            questionIds = all.stream().map(SkillQuestion::getId).collect(Collectors.toList());
+        }
+
+        if (questionIds.isEmpty()) return Collections.emptyList();
+
+        // Step 3: 随机打乱后取足够候选，再按难度筛选
+        Collections.shuffle(questionIds);
+        int poolSize = Math.min(questionIds.size(), CANDIDATE_POOL_MAX);
+        List<Long> finalIds = questionIds.stream()
+                .limit(poolSize) // 多取一些再按难度筛选
+                .collect(Collectors.toList());
+
+        if (finalIds.isEmpty()) return Collections.emptyList();
+
+        List<SkillQuestion> result = skillQuestionMapper.selectList(
+                new LambdaQueryWrapper<SkillQuestion>()
+                        .in(SkillQuestion::getId, finalIds)
+                        .le(SkillQuestion::getDifficulty, difficulty)
+                        .last("LIMIT " + CANDIDATE_POOL_MAX));
+
+        // 二次随机打乱保证每次顺序不同
+        Collections.shuffle(result);
+        return result;
+    }
+
+    /**
+     * 将用户技能名匹配到数据库 skill_tag 表的 ID。
+     */
+    private List<Long> matchTagIds(List<String> userTags) {
+        if (userTags.isEmpty()) return Collections.emptyList();
+
+        // 取所有标签，做模糊匹配（用户标签可能是 "Spring Boot"，库里有 "Spring" 和 "Spring Boot"）
+        List<SkillTag> allTags = skillTagMapper.selectList(new LambdaQueryWrapper<>());
+        Set<Long> matched = new LinkedHashSet<>();
+
+        for (String userTag : userTags) {
+            String lower = userTag.toLowerCase().trim();
+            for (SkillTag t : allTags) {
+                String tagName = t.getName().toLowerCase();
+                // 双向包含匹配：用户画像的 "SpringBoot" 匹配库里的 "Spring Boot"
+                if (lower.contains(tagName) || tagName.contains(lower) || tagName.equals(lower)) {
+                    matched.add(t.getId());
+                }
+            }
+        }
+        return new ArrayList<>(matched);
+    }
+
+    /**
+     * 解析题目所属的能力标签名（取第一个关联标签名）。
+     */
+    private String resolveAbilityTag(Long questionId) {
+        List<SkillQuestionTagRel> rels = skillQuestionTagRelMapper.selectList(
+                new LambdaQueryWrapper<SkillQuestionTagRel>()
+                        .eq(SkillQuestionTagRel::getQuestionId, questionId));
+        if (rels.isEmpty()) return "综合";
+
+        SkillTag tag = skillTagMapper.selectById(rels.get(0).getTagId());
+        return tag != null ? tag.getName() : "综合";
+    }
+
+    /** 解析 JSON 数组字符串 */
+    private List<String> parseJsonList(String json) {
+        if (json == null || json.isBlank()) return Collections.emptyList();
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    // ============================ 共享辅助 ============================
+
     private Set<Long> askedMainQuestionIds(Long sessionId) {
         List<InterviewMessage> mains = messageMapper.selectList(
                 new LambdaQueryWrapper<InterviewMessage>()
@@ -255,30 +379,32 @@ public class InterviewFlowService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    /** 是否还有没问过的候选主问题（answer 与 next 共用同一判断口径） */
     private boolean hasRemainingQuestions(InterviewSession session) {
-        List<Question> candidates = candidateQuestions(session.getJobId(), session.getDifficulty());
-        Set<Long> asked = askedMainQuestionIds(session.getId());
-        return candidates.stream().anyMatch(q -> !asked.contains(q.getId()));
+        return !isTimeExceeded(session);
     }
 
-    /** 校验会话存在、属于当前用户、且处于进行中 */
+    /**
+     * 检查面试是否超时（基于 durationSeconds 与 startTime 计算）。
+     */
+    private boolean isTimeExceeded(InterviewSession session) {
+        if (session.getDurationSeconds() == null || session.getStartTime() == null) {
+            return true;
+        }
+        long elapsed = java.time.Duration.between(session.getStartTime(), LocalDateTime.now()).getSeconds();
+        return elapsed >= session.getDurationSeconds();
+    }
+
     private InterviewSession requireOngoingSession(Long sessionId) {
         InterviewSession session = sessionMapper.selectById(sessionId);
-        if (session == null) {
-            throw new BizException("会话不存在");
-        }
-        if (!session.getUserId().equals(UserContext.getUserId())) {
-            throw new BizException("无权操作该会话");
-        }
-        if (!STATUS_ONGOING.equals(session.getStatus())) {
-            throw new BizException("面试已结束");
-        }
+        if (session == null) throw new BizException("会话不存在");
+        if (!session.getUserId().equals(UserContext.getUserId())) throw new BizException("无权操作该会话");
+        if (!STATUS_ONGOING.equals(session.getStatus())) throw new BizException("面试已结束");
         return session;
     }
 
-    private void saveInterviewerQuestion(Long sessionId, Question q, String msgType, int round, String content) {
-        saveMessage(sessionId, q.getId(), round, ROLE_INTERVIEWER, msgType, content, q.getAbilityTag());
+    private void saveInterviewerMessage(Long sessionId, Long questionId, String msgType,
+                                         int round, String content, String abilityTag) {
+        saveMessage(sessionId, questionId, round, ROLE_INTERVIEWER, msgType, content, abilityTag);
     }
 
     private void saveMessage(Long sessionId, Long questionId, int round, String role,
@@ -291,122 +417,77 @@ public class InterviewFlowService {
         msg.setMsgType(msgType);
         msg.setContent(content);
         msg.setAbilityTag(abilityTag);
-        // createTime 由数据库默认值填充
         messageMapper.insert(msg);
     }
 
-    private QuestionView toView(Question q, int round) {
+    private QuestionView toView(SkillQuestion q, int round, String abilityTag) {
         QuestionView view = new QuestionView();
         view.setId(q.getId());
         view.setContent(q.getContent());
-        view.setAbilityTag(q.getAbilityTag());
+        view.setAbilityTag(abilityTag);
         view.setRoundNo(round);
         return view;
     }
 
     private int normalizeDifficulty(Integer difficulty) {
-        if (difficulty == null || difficulty < 1 || difficulty > 3) {
-            return 2; // 默认中等
-        }
+        if (difficulty == null || difficulty < 1 || difficulty > 3) return 2;
         return difficulty;
     }
 
-    // ============================ 规则化追问引擎 ============================
+    // ============================ 追问引擎（V2：DeepSeek 智能决策） ============================
 
-    /**
-     * 规则化判断是否需要追问。任一命中即追问：
-     *  1) 回答过短（去空白后 < 15 字）；
-     *  2) 与答案要点/能力标签均无关键词重合；
-     *  3) 缺少项目信号词（项目/负责/实现/...）；
-     *  4) 含含糊词（大概/可能/不知道/...）。
-     */
-    private boolean shouldFollowUp(String answer, Question question) {
+    private boolean shouldFollowUp(String answer) {
+        // V2: 所有回答都先进入追问流程，具体是规则兜底还是 DeepSeek 决策
+        // 由 generateFollowup() 内部处理。AI 判定无需追问时返回 null，此处跳过。
+        return true;
+    }
+
+    private FollowupResult generateFollowup(InterviewSession session, SkillQuestion question,
+                                             String abilityTag, String answer, String parentRefAnswer) {
+        // 回答 < 15 字：走规则兜底，不浪费 AI 调用
         String text = answer == null ? "" : answer.trim();
-
-        // 1) 过短
         if (text.length() < 15) {
-            return true;
+            return new FollowupResult(
+                    "你的回答比较简短，能否详细说说你的思路或做法？",
+                    "RULE", "回答过于简短，缺少具体细节");
         }
-        // 4) 含糊
-        for (String vague : VAGUE_WORDS) {
-            if (text.contains(vague)) {
-                return true;
-            }
-        }
-        // 2) 与答案要点/能力标签无重合
-        if (!hasKeywordOverlap(text, question)) {
-            return true;
-        }
-        // 3) 缺项目细节
-        boolean hasProjectSignal = PROJECT_SIGNALS.stream().anyMatch(text::contains);
-        if (!hasProjectSignal) {
-            return true;
-        }
-        return false;
-    }
 
-    /** 回答是否覆盖到答案要点或能力标签中的任一关键词 */
-    private boolean hasKeywordOverlap(String text, Question question) {
-        if (question == null) {
-            return true; // 找不到题目则不因关键词触发追问，避免误判
-        }
-        List<String> keywords = new ArrayList<>();
-        if (question.getAnswerPoints() != null) {
-            // 答案要点以「、」分隔，兼容英文逗号/中文逗号/斜杠
-            for (String kw : question.getAnswerPoints().split("[、,，/]")) {
-                String k = kw.trim();
-                if (!k.isEmpty()) {
-                    keywords.add(k);
-                }
-            }
-        }
-        if (question.getAbilityTag() != null && !question.getAbilityTag().trim().isEmpty()) {
-            keywords.add(question.getAbilityTag().trim());
-        }
-        if (keywords.isEmpty()) {
-            return true; // 没有可比对的要点，不触发
-        }
-        String lower = text.toLowerCase();
-        return keywords.stream().anyMatch(k -> lower.contains(k.toLowerCase()));
-    }
-
-    /**
-     * 生成追问文案：AI 优先（FollowUpService 内部已含规则兜底），
-     * 调用异常或返回空时再退回题库级 {@link #buildFollowup} 作为最终兜底。
-     * 触发追问与否仍由 {@link #shouldFollowUp} 决定，这里只负责“问什么”。
-     * <p>
-     * 返回私有结果对象 {@link FollowupResult}（含 source / triggerReason），仅供内部落库，
-     * 不会暴露给前端，因此 /answer 的响应结构保持不变。
-     */
-    private FollowupResult generateFollowup(InterviewSession session, Question question, String answer) {
         try {
             FollowUpRequest fr = new FollowUpRequest();
             fr.setPosition(resolveJobName(session));
             fr.setQuestion(question != null ? question.getContent() : null);
             fr.setAnswer(answer);
+            // V2 核心：传入题库参考答案，供 DeepSeek 对比决策
+            // 体验题从 InterviewMessage 获取参考答案，题库题从 SkillQuestion 获取
+            String refAnswer = (question != null) ? question.getReferenceAnswer()
+                    : parentRefAnswer;
+            fr.setReferenceAnswer(refAnswer);
+
             FollowUpResponse resp = followUpService.generate(fr);
-            if (resp != null && resp.getFollowUpQuestion() != null && !resp.getFollowUpQuestion().isBlank()) {
+
+            // AI 判定不需要追问
+            if (resp == null) {
+                log.info("[面试追问] AI判定无需追问 sessionId={}, questionId={}",
+                        session.getId(), question != null ? question.getId() : null);
+                return null; // 信号：跳过追问，直接进入下一题
+            }
+
+            if (resp.getFollowUpQuestion() != null && !resp.getFollowUpQuestion().isBlank()) {
                 log.info("[面试追问] sessionId={}, questionId={}, source={}",
                         session.getId(), question != null ? question.getId() : null, resp.getSource());
-                // 透传 FollowUpService 给出的 source（AI / RULE）与 triggerReason，原样落库
-                return new FollowupResult(resp.getFollowUpQuestion().trim(),
-                        resp.getSource(), resp.getTriggerReason());
+                return new FollowupResult(resp.getFollowUpQuestion().trim(), resp.getSource(), resp.getTriggerReason());
             }
+
             log.warn("[面试追问] FollowUpService 返回空，回退题库兜底 sessionId={}", session.getId());
         } catch (Exception e) {
             log.warn("[面试追问] FollowUpService 异常，回退题库兜底 sessionId={}, err={}",
                     session.getId(), e.getMessage());
         }
-        // 外层题库兜底：固定标记为 RULE，并记录兜底原因（规则 7）
-        return new FollowupResult(buildFollowup(question), "RULE",
+        return new FollowupResult(buildFollowup(question, abilityTag), "RULE",
                 "FollowUpService异常或返回为空，使用题库兜底追问");
     }
 
-    /**
-     * 组装并安全保存一条追问记录（实验分析用）。
-     * 仅在确实生成追问后调用；保存失败由 {@link InterviewFollowupRecordService} 内部吞掉，不影响面试。
-     */
-    private void saveFollowupRecord(InterviewSession session, Question question, AnswerRequest req,
+    private void saveFollowupRecord(InterviewSession session, SkillQuestion question, AnswerRequest req,
                                     String abilityTag, FollowupResult followup) {
         InterviewFollowupRecord record = new InterviewFollowupRecord();
         record.setUserId(session.getUserId());
@@ -420,41 +501,99 @@ public class InterviewFlowService {
         record.setSource(followup.source);
         record.setTriggerReason(followup.triggerReason);
         record.setAbilityTag(abilityTag);
-        // createTime 由数据库默认值填充
         followupRecordService.saveSafely(record);
     }
 
-    /**
-     * 追问生成的私有结果对象：携带追问文案及其来源/触发原因，仅供内部落库使用，
-     * 不对外暴露，避免改变 /answer 响应结构。
-     */
     private static class FollowupResult {
-        private final String followUpQuestion;
-        private final String source;
-        private final String triggerReason;
-
-        FollowupResult(String followUpQuestion, String source, String triggerReason) {
-            this.followUpQuestion = followUpQuestion;
-            this.source = source;
-            this.triggerReason = triggerReason;
-        }
+        final String followUpQuestion;
+        final String source;
+        final String triggerReason;
+        FollowupResult(String q, String s, String r) { this.followUpQuestion = q; this.source = s; this.triggerReason = r; }
     }
 
-    /** 取会话岗位名作为追问的 position；缺省给一个安全占位，避免无状态接口校验失败 */
     private String resolveJobName(InterviewSession session) {
         JobPosition job = jobMapper.selectById(session.getJobId());
         String name = (job != null) ? job.getName() : null;
         return (name != null && !name.isBlank()) ? name : "该岗位";
     }
 
-    /** 优先使用题目预设的追问提示，缺省则用能力标签拼一句通用追问 */
-    private String buildFollowup(Question question) {
-        if (question != null && question.getFollowupHint() != null
-                && !question.getFollowupHint().trim().isEmpty()) {
-            return question.getFollowupHint().trim();
+    // ============================ 体验式题目 ============================
+
+    /**
+     * 判定第 roundNo 题是否为体验式题目槽位（确定性，无状态）。
+     * 规则：roundNo &lt; EXPERIENCE_FIRST_BLOCK_SLOT → false；
+     * roundNo &gt;= EXPERIENCE_FIRST_BLOCK_SLOT 时，每 5 题一块，
+     * 块内用 sessionId+blockIndex 做种子随机选一个位置放体验题。
+     */
+    private boolean isExperienceQuestionSlot(Long sessionId, int roundNo) {
+        if (roundNo < EXPERIENCE_FIRST_BLOCK_SLOT) return false;
+        int blockIndex = (roundNo - 1) / EXPERIENCE_BLOCK_SIZE;
+        int blockStart = blockIndex * EXPERIENCE_BLOCK_SIZE + 1;
+        // 用 sessionId + blockIndex 做种子，确定性选一个槽位
+        int offset = (int) ((sessionId * 31L + blockIndex * 17L) % EXPERIENCE_BLOCK_SIZE);
+        int experienceSlot = blockStart + offset;
+        return roundNo == experienceSlot;
+    }
+
+    /**
+     * 构建体验式题目 InterviewStep。失败时返回 null，由调用方回退到题库选题。
+     */
+    private InterviewStep buildExperienceQuestionStep(InterviewSession session, int roundNo) {
+        Resume resume = resumeService.getMine();
+        String jobName = resolveJobName(session);
+
+        try {
+            // 收集已问题目，传给 AI 以避免重复
+            List<String> askedContents = messageMapper.selectList(
+                    new LambdaQueryWrapper<InterviewMessage>()
+                            .eq(InterviewMessage::getSessionId, session.getId())
+                            .eq(InterviewMessage::getRole, ROLE_INTERVIEWER)
+                            .eq(InterviewMessage::getMsgType, MSG_MAIN)
+                            .orderByAsc(InterviewMessage::getId))
+                    .stream()
+                    .map(m -> m.getContent() != null ? m.getContent().replace(EXPERIENCE_QUESTION_PREFIX, "") : "")
+                    .collect(Collectors.toList());
+
+            ExperienceQuestionService.ExperienceQuestionResult result =
+                    experienceQuestionService.generate(jobName, resume, askedContents);
+            String labeledContent = EXPERIENCE_QUESTION_PREFIX + result.getQuestion();
+
+            InterviewMessage msg = new InterviewMessage();
+            msg.setSessionId(session.getId());
+            msg.setQuestionId(0L); // 体验题占位ID（非题库题目）
+            msg.setRoundNo(roundNo);
+            msg.setRole(ROLE_INTERVIEWER);
+            msg.setMsgType(MSG_MAIN);
+            msg.setContent(labeledContent);
+            msg.setAbilityTag(result.getAbilityTag() != null ? result.getAbilityTag() : "综合能力");
+            msg.setQuestionType(QUESTION_TYPE_EXPERIENCE);
+            msg.setReferenceAnswer(result.getReferenceAnswer());
+            messageMapper.insert(msg);
+
+            QuestionView view = new QuestionView();
+            view.setId(0L);
+            view.setContent(labeledContent);
+            view.setAbilityTag(msg.getAbilityTag());
+            view.setRoundNo(roundNo);
+            view.setQuestionType(QUESTION_TYPE_EXPERIENCE);
+
+            InterviewStep step = new InterviewStep();
+            step.setNextAction(ACTION_NEXT);
+            step.setQuestion(view);
+            return step;
+        } catch (Exception e) {
+            log.warn("[体验题] 生成失败，回退题库选题: sessionId={}, roundNo={}, err={}",
+                    session.getId(), roundNo, e.getMessage());
+            return null;
         }
-        String tag = (question != null && question.getAbilityTag() != null)
-                ? question.getAbilityTag() : "这个问题";
+    }
+
+    private String buildFollowup(SkillQuestion question, String abilityTag) {
+        if (question != null && question.getFollowupGuide() != null
+                && !question.getFollowupGuide().trim().isEmpty()) {
+            return question.getFollowupGuide().trim();
+        }
+        String tag = (abilityTag != null && !abilityTag.isBlank()) ? abilityTag : "这个问题";
         return "能否结合你的具体项目，再深入说明一下「" + tag + "」相关的细节和你的思考？";
     }
 }

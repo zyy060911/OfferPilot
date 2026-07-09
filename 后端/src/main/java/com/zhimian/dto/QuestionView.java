@@ -12,4 +12,6 @@ public class QuestionView {
     private String content;
     private String abilityTag;
     private Integer roundNo;
+    /** 题目类型: SKILL=题库题目, EXPERIENCE=体验式 */
+    private String questionType;
 }

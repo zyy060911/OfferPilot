@@ -66,6 +66,34 @@ public class DeepSeekClient {
         }
     }
 
+    /**
+     * 调用 DeepSeek 并期望返回 JSON 对象。
+     * 解析 choices[0].message.content 中的 JSON，失败返回 null。
+     *
+     * @return 解析后的 JsonNode；调用失败或返回非 JSON 时返回 null。
+     */
+    public JsonNode chatJson(String systemPrompt, String userPrompt) {
+        String raw = chat(systemPrompt, userPrompt);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            // 模型可能在 JSON 外层包裹 markdown 代码块，先尝试剥离
+            String json = raw.trim();
+            if (json.startsWith("```")) {
+                int start = json.indexOf('\n');
+                int end = json.lastIndexOf("```");
+                if (start >= 0 && end > start) {
+                    json = json.substring(start, end).trim();
+                }
+            }
+            return objectMapper.readTree(json);
+        } catch (Exception e) {
+            log.warn("DeepSeek 返回内容无法解析为 JSON：{}", raw);
+            return null;
+        }
+    }
+
     /** 解析 choices[0].message.content，缺失或空白返回 null */
     private String extractContent(String raw) {
         if (raw == null || raw.isBlank()) {
