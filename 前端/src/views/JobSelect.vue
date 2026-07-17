@@ -130,12 +130,23 @@
 
         <section class="form-panel">
           <h2>4. 简历 / 项目经验</h2>
-          <el-upload class="resume-upload" action="#" :auto-upload="false" drag>
+          <el-upload
+            class="resume-upload"
+            :auto-upload="false"
+            drag
+            :limit="1"
+            accept=".pdf,.doc,.docx"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+            :file-list="fileList"
+          >
             <el-icon><Upload /></el-icon>
             <span>点击上传简历 <small>（PDF/DOC/DOCX，≤ 10MB）</small></span>
             <em>或拖拽文件到此处上传</em>
-            <button type="button">从历史简历选择</button>
           </el-upload>
+          <div v-if="uploading" style="text-align:center;color:#407cff;margin-top:8px;font-weight:700;">
+            <el-icon class="is-loading"><Loading /></el-icon> 正在解析简历...
+          </div>
 
           <label class="project-field">
             <span>项目经验 <small>（选填）</small></span>
@@ -205,6 +216,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import {
   Aim,
   Calendar,
@@ -216,6 +228,7 @@ import {
   Collection,
   Cpu,
   FolderChecked,
+  Loading,
   Lock,
   MagicStick,
   Medal,
@@ -224,6 +237,7 @@ import {
   Suitcase,
   Upload
 } from '@element-plus/icons-vue'
+import { uploadResumeFile } from '@/api'
 
 const router = useRouter()
 
@@ -316,6 +330,44 @@ const toggleSkill = (skill) => {
   }
 }
 
+// File upload state
+const fileList = ref([])
+const uploading = ref(false)
+const uploadedProfile = ref(null)
+
+const handleFileChange = async (uploadFile) => {
+  const file = uploadFile.raw
+  const allowedTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ]
+  if (!allowedTypes.includes(file.type)) {
+    ElMessage.error('仅支持 PDF、DOC、DOCX 格式')
+    fileList.value = []
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过 10MB')
+    fileList.value = []
+    return
+  }
+  uploading.value = true
+  try {
+    uploadedProfile.value = await uploadResumeFile(file)
+    ElMessage.success('简历上传并解析成功')
+  } catch (err) {
+    ElMessage.error('简历解析失败，请检查文件格式')
+    fileList.value = []
+  } finally {
+    uploading.value = false
+  }
+}
+
+const handleFileRemove = () => {
+  uploadedProfile.value = null
+}
+
 const startInterview = () => {
   if (!selectedId.value) return
   let durationSec
@@ -325,14 +377,16 @@ const startInterview = () => {
     // "20分钟" → 1200, "30分钟" → 1800, "45分钟" → 2700
     durationSec = parseInt(interview.duration) * 60
   }
-  router.push({
-    path: '/resume',
-    query: {
-      jobId: selectedId.value,
-      difficulty: interview.difficulty,
-      duration: durationSec
-    }
-  })
+  const query = {
+    jobId: selectedId.value,
+    difficulty: interview.difficulty,
+    duration: durationSec
+  }
+  if (uploadedProfile.value?.rawText) {
+    query.extractedText = uploadedProfile.value.rawText
+    query.fileUploaded = '1'
+  }
+  router.push({ path: '/resume', query })
 }
 </script>
 

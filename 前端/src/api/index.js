@@ -39,6 +39,18 @@ export const finishInterview = (sessionId) => request.post(`/interview/${session
 /** 获取某个面试会话的全部问答消息 */
 export const getSessionMessages = (sessionId) => request.get(`/interview/${sessionId}/messages`)
 
+/** 上传简历文件(PDF/DOC/DOCX)，返回提取后的个人画像 */
+export const uploadResumeFile = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/resume/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+/** 获取从文件上传提取的个人画像 */
+export const getResumeFileProfile = () => request.get('/resume/file-profile')
+
 /** 能力报告详情 → { reportId, jobName, totalScore, summary, strengths, weaknesses, suggestions, weakTags, dimensions } */
 export const getReportDetail = (reportId) => request.get(`/report/${reportId}`)
 
