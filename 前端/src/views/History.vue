@@ -49,7 +49,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="140" align="right">
+          <el-table-column label="操作" width="220" align="right">
             <template #default="{ row }">
               <el-button
                 v-if="row.reportId"
@@ -66,6 +66,7 @@
         </el-table>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -105,7 +106,7 @@ const durationText = (row) => {
   const h = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)
   const s = total % 60
-  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
 onMounted(async () => {
@@ -155,4 +156,5 @@ onMounted(async () => {
   color: var(--text-muted);
   font-size: 13px;
 }
+
 </style>

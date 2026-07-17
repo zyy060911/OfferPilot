@@ -1,5 +1,6 @@
 package com.zhimian.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.zhimian.config.AiProperties;
 import com.zhimian.dto.FollowUpRequest;
 import com.zhimian.dto.FollowUpResponse;
@@ -10,10 +11,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 动态追问服务：优先用 DeepSeek 生成贴合回答的追问，
- * 在「回答过短 / AI 未启用 / AI 调用失败或返回空」时回退到规则化兜底。
+ * Dynamic follow-up service V2: DeepSeek handles both the "whether to follow up" decision
+ * and the "follow-up question text" generation.
  * <p>
- * source = AI 表示 DeepSeek 生成；source = RULE 表示规则兜底。
+ * Flow:
+ * <ol>
+ *   <li>Answer shorter than 15 chars: rule-based fallback (no AI call)</li>
+ *   <li>AI not usable: rule-based fallback</li>
+ *   <li>AI usable: send original question + reference answer + user answer, let AI decide</li>
+ *   <li>AI decides no follow-up needed: return null</li>
+ *   <li>AI decides follow-up needed: return AI-generated question</li>
+ *   <li>AI call fails: rule-based fallback</li>
+ * </ol>
  */
 @Slf4j
 @Service
@@ -21,53 +30,78 @@ import org.springframework.stereotype.Service;
 public class FollowUpService {
 
     private static final String SOURCE_AI = "AI";
+    private static final String SOURCE_RULE = "RULE";
 
     private final AiProperties aiProps;
     private final DeepSeekClient deepSeekClient;
     private final FollowUpPromptBuilder promptBuilder;
     private final RuleBasedFollowUpGenerator ruleGenerator;
 
+    /**
+     * Generate a follow-up question, or return null to signal no follow-up is needed.
+     *
+     * @param req follow-up request (position / question / answer / referenceAnswer)
+     * @return follow-up response; null if AI determines no follow-up is needed
+     */
     public FollowUpResponse generate(FollowUpRequest req) {
         String answer = req.getAnswer() == null ? "" : req.getAnswer().trim();
         boolean tooShort = answer.length() < RuleBasedFollowUpGenerator.MIN_ANSWER_LENGTH;
 
-        // 规则 6：回答过短直接走规则兜底，不浪费一次 AI 调用
+        // Answer too short: rule-based fallback, don't waste an AI call
         if (tooShort) {
-            return ruleGenerator.generate(req.getPosition(), req.getQuestion(), req.getAnswer(), true);
+            return ruleGenerator.tooShortResponse();
         }
 
-        // AI 未启用或 key 未正确配置：直接规则兜底
+        // AI not enabled or key not configured: rule-based fallback
         if (!aiProps.isUsable()) {
-            log.debug("AI 未启用或未配置有效 key，使用规则兜底");
-            return ruleGenerator.generate(req.getPosition(), req.getQuestion(), req.getAnswer(), false);
+            log.debug("AI not usable, using rule-based fallback");
+            return ruleGenerator.defaultResponse();
         }
 
-        // 调用 DeepSeek：成功且非空 → source = AI
-        String aiQuestion = deepSeekClient.chat(
+        // Call DeepSeek: original question + reference answer + user answer
+        JsonNode aiResult = deepSeekClient.chatJson(
                 promptBuilder.systemPrompt(),
-                promptBuilder.userPrompt(req.getPosition(), req.getQuestion(), req.getAnswer()));
+                promptBuilder.userPrompt(
+                        req.getPosition(),
+                        req.getQuestion(),
+                        req.getReferenceAnswer(),
+                        req.getAnswer()));
 
-        if (aiQuestion != null && !aiQuestion.isBlank()) {
-            return FollowUpResponse.of(cleanup(aiQuestion), SOURCE_AI, "基于考生回答由 AI 生成的深入追问");
+        if (aiResult != null) {
+            try {
+                boolean shouldFollowUp = aiResult.path("shouldFollowUp").asBoolean(false);
+                String aiQuestion = aiResult.path("followUpQuestion").asText("");
+                String reason = aiResult.path("reason").asText("AI judgement");
+
+                if (shouldFollowUp && aiQuestion != null && !aiQuestion.isBlank()) {
+                    log.info("[AI-FollowUp] shouldFollowUp=true, reason={}", reason);
+                    return FollowUpResponse.of(cleanup(aiQuestion), SOURCE_AI, reason);
+                } else {
+                    log.info("[AI-FollowUp] shouldFollowUp=false, reason={}", reason);
+                    return null; // AI decided no follow-up needed
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse DeepSeek follow-up JSON, fallback to rule: {}", e.getMessage());
+            }
         }
 
-        // 规则 7：AI 失败 / 超时 / 返回空内容 → 规则兜底
-        log.debug("DeepSeek 未返回有效内容，使用规则兜底");
-        return ruleGenerator.generate(req.getPosition(), req.getQuestion(), req.getAnswer(), false);
+        // AI failed / timed out / returned empty: rule-based fallback
+        log.debug("DeepSeek did not return valid JSON, using rule-based fallback");
+        return ruleGenerator.defaultResponse();
     }
 
-    /** 清洗模型输出：去掉多余换行后的内容与成对引号，保证只剩一句追问 */
+    /** Clean model output: strip extra newlines and surrounding quotes. */
     private String cleanup(String text) {
         String t = text.trim();
-        // 模型偶尔换行追加多余内容，仅取第一行有效内容
+        // Model sometimes appends extra content after newlines; only take the first line
         int nl = t.indexOf('\n');
         if (nl > 0) {
             t = t.substring(0, nl).trim();
         }
-        // 去除成对包裹的中英文引号
+        // Remove surrounding ASCII double or single quotes
         if (t.length() >= 2
                 && ((t.startsWith("\"") && t.endsWith("\""))
-                || (t.startsWith("“") && t.endsWith("”")))) {
+                    || (t.startsWith("'") && t.endsWith("'")))) {
             t = t.substring(1, t.length() - 1).trim();
         }
         return t;

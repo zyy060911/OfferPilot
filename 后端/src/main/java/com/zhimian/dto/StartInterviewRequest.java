@@ -14,4 +14,7 @@ public class StartInterviewRequest {
 
     /** 难度: 1简单 2中等 3困难，缺省按中等处理 */
     private Integer difficulty;
+
+    /** 面试时长（秒），缺省 1800（30分钟） */
+    private Integer durationSeconds;
 }

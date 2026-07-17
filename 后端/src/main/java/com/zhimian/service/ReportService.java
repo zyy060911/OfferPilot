@@ -10,13 +10,13 @@ import com.zhimian.entity.InterviewMessage;
 import com.zhimian.entity.InterviewReport;
 import com.zhimian.entity.InterviewSession;
 import com.zhimian.entity.JobPosition;
-import com.zhimian.entity.Question;
 import com.zhimian.entity.ReportDimension;
+import com.zhimian.entity.SkillQuestion;
 import com.zhimian.mapper.InterviewMessageMapper;
 import com.zhimian.mapper.InterviewReportMapper;
 import com.zhimian.mapper.InterviewSessionMapper;
 import com.zhimian.mapper.JobPositionMapper;
-import com.zhimian.mapper.QuestionMapper;
+import com.zhimian.mapper.SkillQuestionMapper;
 import com.zhimian.mapper.ReportDimensionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +46,7 @@ public class ReportService {
     private final InterviewMessageMapper messageMapper;
     private final InterviewReportMapper reportMapper;
     private final ReportDimensionMapper dimensionMapper;
-    private final QuestionMapper questionMapper;
+    private final SkillQuestionMapper skillQuestionMapper;
     private final JobPositionMapper jobMapper;
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -281,8 +281,8 @@ public class ReportService {
                 }
             }
 
-            // 题目答案要点关键词
-            Question q = qId != null ? questionMapper.selectById(qId) : null;
+            // 题目答案关键词
+            SkillQuestion q = qId != null ? skillQuestionMapper.selectById(qId) : null;
             for (String kw : answerKeywords(q)) {
                 if (lower.contains(kw.toLowerCase())) {
                     m.techHits++;
@@ -319,12 +319,12 @@ public class ReportService {
         return true;
     }
 
-    private List<String> answerKeywords(Question q) {
+    private List<String> answerKeywords(SkillQuestion q) {
         List<String> result = new ArrayList<>();
-        if (q == null || q.getAnswerPoints() == null) {
+        if (q == null || q.getAnswerKeywords() == null) {
             return result;
         }
-        for (String kw : q.getAnswerPoints().split("[、,，/]")) {
+        for (String kw : q.getAnswerKeywords().split("[、,，/]")) {
             String k = kw.trim();
             if (!k.isEmpty()) {
                 result.add(k);

@@ -28,5 +28,9 @@ public class InterviewMessage {
     private String msgType;
     private String content;
     private String abilityTag;
+    /** 题目类型: SKILL=题库题目, EXPERIENCE=体验式(AI生成) */
+    private String questionType;
+    /** 参考答案（体验式题目由 DeepSeek 生成时附带，供追问引擎使用） */
+    private String referenceAnswer;
     private LocalDateTime createTime;
 }

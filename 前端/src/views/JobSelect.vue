@@ -46,12 +46,27 @@
           <div class="field-grid setting-grid">
             <label>
               <span>面试时长</span>
-              <el-select v-model="interview.duration">
+              <el-select v-model="interview.duration" @change="onDurationChange">
                 <el-option label="20分钟" value="20分钟" />
                 <el-option label="30分钟" value="30分钟" />
                 <el-option label="45分钟" value="45分钟" />
+                <el-option label="自定义" value="自定义" />
               </el-select>
             </label>
+            <div v-if="interview.duration === '自定义'" class="custom-duration">
+              <label>
+                <span>时</span>
+                <el-input-number v-model="customH" :min="0" :step="1" @change="onCustomTimeChange" />
+              </label>
+              <label>
+                <span>分</span>
+                <el-input-number v-model="customM" :min="0" :step="1" @change="onCustomTimeChange" />
+              </label>
+              <label>
+                <span>秒</span>
+                <el-input-number v-model="customS" :min="customSecondsMin" :step="1" @change="onCustomTimeChange" />
+              </label>
+            </div>
             <label>
               <span>难度</span>
               <el-select v-model="interview.difficulty">
@@ -252,6 +267,50 @@ const skills = ['Java', 'Spring Boot', 'MySQL', 'Redis', 'Vue', 'Python']
 const selectedId = ref(null)
 const selectedSkills = ref([])
 const projectExperience = ref('')
+// 自定义时长：时/分/秒
+const customH = ref(0)
+const customM = ref(5)
+const customS = ref(0)
+
+// 秒数下限：时或分不为 0 时为 0，否则为 5
+const customSecondsMin = computed(() => (customH.value > 0 || customM.value > 0) ? 0 : 5)
+
+// 进位处理：秒>59 → 分+1；分>59 → 时+1；时>6 → 截断
+const onCustomTimeChange = () => {
+  // 秒进位
+  if (customS.value > 59) {
+    customM.value += Math.floor(customS.value / 60)
+    customS.value = customS.value % 60
+  }
+  // 分进位
+  if (customM.value > 59) {
+    customH.value += Math.floor(customM.value / 60)
+    customM.value = customM.value % 60
+  }
+  // 时截断
+  if (customH.value > 6) customH.value = 6
+  // 下限保护：时=0 且 分=0 时，秒至少为 5
+  if (customH.value === 0 && customM.value === 0 && customS.value < 5) {
+    customS.value = 5
+  }
+  // 负值归零
+  if (customH.value < 0) customH.value = 0
+  if (customM.value < 0) customM.value = 0
+  if (customS.value < 0) customS.value = 0
+  // 全零兜底
+  if (customH.value === 0 && customM.value === 0 && customS.value === 0) {
+    customS.value = 5
+  }
+}
+
+const onDurationChange = (val) => {
+  // 切换到自定义时重置为默认 5 分钟
+  if (val === '自定义') {
+    customH.value = 0
+    customM.value = 5
+    customS.value = 0
+  }
+}
 
 const selectedJob = computed(() => jobOptions.find((job) => job.id === selectedId.value) || null)
 
@@ -311,10 +370,17 @@ const handleFileRemove = () => {
 
 const startInterview = () => {
   if (!selectedId.value) return
+  let durationSec
+  if (interview.duration === '自定义') {
+    durationSec = customH.value * 3600 + customM.value * 60 + customS.value
+  } else {
+    // "20分钟" → 1200, "30分钟" → 1800, "45分钟" → 2700
+    durationSec = parseInt(interview.duration) * 60
+  }
   const query = {
     jobId: selectedId.value,
     difficulty: interview.difficulty,
-    duration: interview.duration
+    duration: durationSec
   }
   if (uploadedProfile.value?.rawText) {
     query.extractedText = uploadedProfile.value.rawText
@@ -458,6 +524,13 @@ const startInterview = () => {
 
 .setting-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.custom-duration {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  grid-column: 1 / -1;
 }
 
 label span,

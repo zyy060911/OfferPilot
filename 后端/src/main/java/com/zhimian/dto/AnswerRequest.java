@@ -10,7 +10,7 @@ import lombok.Data;
 @Data
 public class AnswerRequest {
 
-    @NotNull(message = "题目ID不能为空")
+    /** 题库题目必传；体验题（AI 生成）可传 null 或 0 */
     private Long questionId;
 
     @NotBlank(message = "回答内容不能为空")

@@ -25,6 +25,8 @@ public class InterviewSession {
     private String status;
     private Integer isRetrain;
     private String weakTags;
+    /** 面试时长（秒），默认 1800（30分钟） */
+    private Integer durationSeconds;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
 }

@@ -24,7 +24,7 @@ export const updateProfile = (data) => request.put('/user/profile', data)
 /** 面试记录列表 */
 export const getInterviewRecords = () => request.get('/interview/records')
 
-/** 开始面试：{ jobId, difficulty } → { sessionId, jobName, question } */
+/** 开始面试：{ jobId, difficulty, durationSeconds } → { sessionId, jobName, question } */
 export const startInterview = (data) => request.post('/interview/start', data)
 
 /** 提交回答：{ questionId, answer } → { nextAction, followupQuestion } */
@@ -35,6 +35,9 @@ export const getNextQuestion = (sessionId) => request.get(`/interview/${sessionI
 
 /** 结束面试 → reportId（用于跳转报告页） */
 export const finishInterview = (sessionId) => request.post(`/interview/${sessionId}/finish`)
+
+/** 获取某个面试会话的全部问答消息 */
+export const getSessionMessages = (sessionId) => request.get(`/interview/${sessionId}/messages`)
 
 /** 上传简历文件(PDF/DOC/DOCX)，返回提取后的个人画像 */
 export const uploadResumeFile = (file) => {

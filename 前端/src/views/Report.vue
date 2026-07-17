@@ -105,6 +105,50 @@
         </div>
       </div>
 
+      <!-- 问答记录 -->
+      <div class="qa-section" v-if="report?.sessionId">
+        <div class="insight-card glass-panel">
+          <h3><el-icon><ChatLineRound /></el-icon>面试问答记录（共 {{ qaRounds.length }} 题）</h3>
+          <div v-loading="qaLoading">
+            <div v-if="qaRounds.length" class="qa-rounds">
+              <el-collapse v-model="activeRounds">
+                <el-collapse-item v-for="r in qaRounds" :key="r.roundNo" :name="String(r.roundNo)">
+                  <template #title>
+                    <div class="round-header">
+                      <strong>第 {{ r.roundNo }} 题</strong>
+                      <el-tag v-if="r.abilityTag" size="small" effect="plain" type="primary">{{ r.abilityTag }}</el-tag>
+                      <el-tag v-if="r.questionType === 'EXPERIENCE'" size="small" type="warning" effect="dark">经历题</el-tag>
+                      <span v-if="r.hasFollowup" class="round-followup-badge">含追问</span>
+                    </div>
+                  </template>
+                  <div class="round-body">
+                    <div class="round-msg interviewer">
+                      <span class="round-msg-label">面试官提问</span>
+                      <p>{{ r.question?.content }}</p>
+                    </div>
+                    <div v-if="r.mainAnswer" class="round-msg candidate">
+                      <span class="round-msg-label">你的回答</span>
+                      <p>{{ r.mainAnswer.content }}</p>
+                    </div>
+                    <template v-if="r.followup">
+                      <div class="round-msg interviewer followup">
+                        <span class="round-msg-label">追问</span>
+                        <p>{{ r.followup.content }}</p>
+                      </div>
+                      <div v-if="r.followupAnswer" class="round-msg candidate followup">
+                        <span class="round-msg-label">追问回答</span>
+                        <p>{{ r.followupAnswer.content }}</p>
+                      </div>
+                    </template>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+            <el-empty v-else-if="!qaLoading" description="暂无问答记录" />
+          </div>
+        </div>
+      </div>
+
       <!-- 操作 -->
       <div class="report-actions">
         <el-button :icon="HomeFilled" @click="router.push('/home')">返回首页</el-button>
@@ -128,6 +172,7 @@ import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import {
   Aim,
+  ChatLineRound,
   CircleCheckFilled,
   DataAnalysis,
   Download,
@@ -138,7 +183,7 @@ import {
   Tickets,
   WarningFilled
 } from '@element-plus/icons-vue'
-import { getReportDetail, getInterviewRecords, exportReport } from '@/api'
+import { getReportDetail, getInterviewRecords, exportReport, getSessionMessages } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -146,6 +191,44 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const report = ref(null)
+
+// Q&A 历史
+const qaMessages = ref([])
+const qaLoading = ref(false)
+const activeRounds = ref([])
+
+// 将平铺消息按题目轮次分组
+const qaRounds = computed(() => {
+  const rounds = []
+  let cur = null
+  for (const msg of qaMessages.value) {
+    if (msg.role === 'INTERVIEWER' && msg.msgType === 'MAIN') {
+      cur = {
+        roundNo: msg.roundNo,
+        abilityTag: msg.abilityTag,
+        questionType: msg.questionType,
+        question: msg,
+        mainAnswer: null,
+        followup: null,
+        followupAnswer: null,
+        hasFollowup: false
+      }
+      rounds.push(cur)
+    } else if (cur) {
+      if (msg.role === 'INTERVIEWER' && msg.msgType === 'FOLLOWUP') {
+        cur.followup = msg
+        cur.hasFollowup = true
+      } else if (msg.role === 'CANDIDATE' && msg.msgType === 'ANSWER') {
+        if (cur.followup && !cur.followupAnswer) {
+          cur.followupAnswer = msg
+        } else if (!cur.mainAnswer) {
+          cur.mainAnswer = msg
+        }
+      }
+    }
+  }
+  return rounds
+})
 
 const radarRef = ref(null)
 let chart = null
@@ -256,6 +339,15 @@ const handleExport = async (format) => {
 const loadReport = async (reportId) => {
   try {
     report.value = await getReportDetail(reportId)
+    // 同步加载问答历史
+    if (report.value?.sessionId) {
+      qaLoading.value = true
+      try {
+        qaMessages.value = await getSessionMessages(report.value.sessionId)
+      } finally {
+        qaLoading.value = false
+      }
+    }
     await nextTick()
     renderRadar()
     window.addEventListener('resize', resizeChart)
@@ -275,7 +367,7 @@ onMounted(async () => {
         .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
       if (finished.length) {
         reportId = finished[0].reportId
-        router.replace({ path: '/report', query: { reportId } })
+        // 直接加载最新报告，不修改 URL（避免挂载期间导航导致路由异常）
       } else {
         error.value = '还没有可查看的报告，先去完成一次面试吧。'
         return
@@ -515,6 +607,107 @@ onBeforeUnmount(() => {
 .weaknesses li::before { background: var(--warning); }
 .suggestions h3 .el-icon { color: var(--primary); }
 .suggestions li::before { background: var(--primary); }
+
+/* Q&A 历史 */
+.qa-section {
+  margin-top: 20px;
+}
+
+.qa-rounds {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* 折叠项悬浮效果 */
+.qa-rounds :deep(.el-collapse-item__header) {
+  cursor: pointer;
+  padding: 12px 16px;
+  border-radius: 10px;
+  transition: background 0.2s, box-shadow 0.2s;
+  font-weight: 600;
+  user-select: none;
+}
+
+.qa-rounds :deep(.el-collapse-item__header:hover) {
+  background: rgba(37, 99, 235, 0.06);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.qa-rounds :deep(.el-collapse-item__arrow) {
+  font-size: 16px;
+  color: var(--primary);
+  margin-right: 6px;
+}
+
+.qa-rounds :deep(.el-collapse-item__wrap) {
+  border: none;
+}
+
+.qa-rounds :deep(.el-collapse-item) {
+  margin-bottom: 6px;
+  border: 1px solid rgba(220, 230, 242, 0.8);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.round-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.round-header strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.round-followup-badge {
+  color: #8c57ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.round-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.round-msg {
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+
+.round-msg.interviewer {
+  background: rgba(37, 99, 235, 0.05);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+.round-msg.candidate {
+  background: rgba(22, 167, 106, 0.05);
+  border: 1px solid rgba(22, 167, 106, 0.12);
+}
+
+.round-msg.followup {
+  border-left: 3px solid #8c57ff;
+}
+
+.round-msg-label {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.round-msg p {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
 
 /* 操作 */
 .report-actions {
