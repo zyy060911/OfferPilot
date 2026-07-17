@@ -148,7 +148,7 @@ import {
   Star,
   VideoCamera
 } from '@element-plus/icons-vue'
-import { saveResume, getMyResume } from '@/api'
+import { saveResume, getMyResume, getResumeFileProfile } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -227,6 +227,34 @@ const goInterview = () => {
 onMounted(async () => {
   const resume = await getMyResume()
   applyResume(resume)
+
+  // Also load file-derived profile if available
+  try {
+    const fileProfile = await getResumeFileProfile()
+    if (fileProfile && (fileProfile.skills?.length > 0 || fileProfile.projects?.length > 0)) {
+      // Fill textarea with extracted text if empty
+      if (fileProfile.rawText && !rawText.value) {
+        rawText.value = fileProfile.rawText
+      }
+      // Merge skills (union, deduped)
+      const existingSkills = new Set(skills.value)
+      ;(fileProfile.skills || []).forEach(s => existingSkills.add(s))
+      skills.value = [...existingSkills]
+
+      // Merge projects
+      const existingProjects = [...projects.value]
+      ;(fileProfile.projects || []).forEach(p => {
+        if (!existingProjects.includes(p)) existingProjects.push(p)
+      })
+      projects.value = existingProjects
+
+      if (skills.value.length > 0 || projects.value.length > 0) {
+        analyzed.value = true
+      }
+    }
+  } catch (_) {
+    // No file-derived data available — that's fine
+  }
 })
 </script>
 

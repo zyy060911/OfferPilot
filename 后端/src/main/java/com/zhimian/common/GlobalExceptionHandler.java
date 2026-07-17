@@ -3,6 +3,7 @@ package com.zhimian.common;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.validation.BindException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -28,6 +29,11 @@ public class GlobalExceptionHandler {
             msg = ex.getBindingResult().getFieldError().getDefaultMessage();
         }
         return Result.error(400, msg);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Result<Void> handleUploadSize(MaxUploadSizeExceededException e) {
+        return Result.error(400, "文件大小不能超过10MB");
     }
 
     @ExceptionHandler(Exception.class)
