@@ -1,22 +1,23 @@
+/**
+ * Axios instance for JSON API requests.
+ * Intercepts JWT, parses Result<T> envelope, handles 401.
+ */
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
-import router from '@/router'
+import router from '../router'
+import { useUserStore } from '../store/user'
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 30000
+  timeout: 30000,
 })
 
-request.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => Promise.reject(error)
-)
+request.interceptors.request.use((config) => {
+  const store = useUserStore()
+  if (store.token) {
+    config.headers.Authorization = `Bearer ${store.token}`
+  }
+  return config
+})
 
 request.interceptors.response.use(
   (response) => {
@@ -24,16 +25,13 @@ request.interceptors.response.use(
     if (res.code === 200) {
       return res.data
     }
-    ElMessage.error(res.message || '请求失败')
     return Promise.reject(new Error(res.message || '请求失败'))
   },
   (error) => {
-    if (error.response && error.response.status === 401) {
-      ElMessage.error('登录已过期，请重新登录')
-      localStorage.removeItem('token')
+    if (error.response?.status === 401) {
+      const store = useUserStore()
+      store.logout()
       router.push('/login')
-    } else {
-      ElMessage.error(error.message || '网络异常')
     }
     return Promise.reject(error)
   }

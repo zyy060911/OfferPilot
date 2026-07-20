@@ -1,667 +1,921 @@
 <template>
-  <div class="dashboard">
-    <section class="hero-strip">
-      <div class="hero-copy">
-        <h1>{{ greeting }}，{{ displayName }} <span>👋</span></h1>
-        <p>持续训练，提升面试能力，离理想 Offer 更进一步！</p>
-      </div>
-      <div class="hero-quote">
-        <p>每一次模拟，都是你更从容的开始。</p>
-        <img :src="dashboardDeco" alt="" />
-      </div>
-    </section>
+  <AppLayout>
+    <div class="dashboard">
+      <!-- Greeting Strip -->
+      <section class="hero-strip">
+        <div class="strip-left">
+          <div class="bubble-wrap" @mouseenter="cycleQuote">
+            <div class="ai-bubble">
+              <div class="bubble-avatar">AI</div>
+              <div class="bubble-body">
+                <p class="bubble-text">{{ currentQuote }}</p>
+                <span class="bubble-tag">面试官寄语</span>
+              </div>
+            </div>
+          </div>
 
-    <section class="quick-actions">
-      <article
-        v-for="action in quickActions"
-        :key="action.title"
-        class="action-card"
-        @click="router.push(action.path)"
-      >
-        <span class="action-icon" :class="action.theme">
-          <el-icon><component :is="action.icon" /></el-icon>
-        </span>
-        <div>
-          <h2>{{ action.title }}</h2>
-          <p>{{ action.desc }}</p>
-          <button type="button">
-            {{ action.cta }}
-            <el-icon><ArrowRight /></el-icon>
-          </button>
+          <div class="hero-info">
+            <p class="hero-time">{{ greeting }}</p>
+            <h1 class="hero-name">{{ displayName }}</h1>
+          </div>
+
+          <router-link to="/jobs" class="hero-cta">
+            <span class="cta-ring">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </span>
+            <span class="cta-label">开始面试</span>
+          </router-link>
         </div>
-      </article>
-    </section>
 
-    <div class="dashboard-grid">
-      <div class="dashboard-main">
-        <section class="panel jobs-panel">
-          <header class="panel-header">
-            <h2>可选岗位</h2>
-            <router-link to="/jobs">查看全部 <el-icon><ArrowRight /></el-icon></router-link>
-          </header>
+        <div class="strip-right">
+          <!-- Today's Todo -->
+          <div class="todo-card">
+            <span class="mini-label">今日待办</span>
+            <div class="todo-list">
+              <label v-for="(t, i) in todos" :key="i" class="todo-item" :class="{ done: t.done }">
+                <input type="checkbox" v-model="t.done" />
+                <span class="todo-check"></span>
+                <span class="todo-text">{{ t.text }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <div v-loading="jobsLoading" class="job-cards">
-            <article
-              v-for="job in jobs"
-              :key="job.id"
-              class="job-card"
-              @click="router.push({ path: '/jobs', query: { select: job.id } })"
-            >
-              <div class="job-brand">
-                <el-icon><CollectionTag /></el-icon>
+      <!-- Stats Row -->
+      <section class="stats-row">
+        <div
+          v-for="(stat, i) in stats"
+          :key="i"
+          class="stat-card reveal-item"
+          :style="{ '--delay': i * 80 + 'ms', '--depth': stat.depth }"
+        >
+          <div class="stat-top">
+            <span class="stat-label">{{ stat.label }}</span>
+            <span class="stat-trend" :class="stat.trendType">{{ stat.trend }}</span>
+          </div>
+          <span class="stat-num">{{ stat.display }}</span>
+
+          <!-- Progress bar -->
+          <div v-if="stat.progress !== undefined" class="stat-bar">
+            <div class="stat-bar-fill" :style="{ width: stat.progress + '%' }"></div>
+          </div>
+
+          <!-- Trend chart -->
+          <div class="trend-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none" class="trend-svg">
+              <defs>
+                <linearGradient :id="'tg' + i" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" :stop-color="stat.depth" stop-opacity="0.3"/>
+                  <stop offset="100%" :stop-color="stat.depth" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path :d="trendArea(stat.trendData)" :fill="`url(#tg${i})`"/>
+              <polyline :points="trendLine(stat.trendData)" fill="none" :stroke="stat.depth" stroke-width="2" stroke-linecap="round"/>
+              <circle v-for="(p, j) in trendPoints(stat.trendData)" :key="j" :cx="p.x" :cy="p.y" r="2.5" :fill="stat.depth"/>
+            </svg>
+            <div class="trend-labels">
+              <span v-for="(d, j) in stat.trendLabels" :key="j">{{ d }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Grid -->
+      <div class="main-grid">
+        <section class="card recent-section">
+          <div class="card-head">
+            <h2 class="card-title">最近面试</h2>
+            <router-link to="/history" class="link-more">查看全部</router-link>
+          </div>
+          <div class="interview-list">
+            <div v-if="recentInterviews.length === 0" class="empty-state">
+              <svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+              <p class="empty-text">暂时还没有面试记录，尝试一次面试吧</p>
+            </div>
+            <template v-else>
+            <div v-for="(item, i) in recentInterviews" :key="i" class="interview-row reveal-item" :style="{ '--delay': i * 60 + 'ms' }">
+              <div class="interview-avatar" :style="{ background: item.avatarBg }">{{ item.position.charAt(0) }}</div>
+              <div class="interview-info">
+                <span class="interview-pos">{{ item.position }}</span>
+                <span class="interview-meta">{{ item.company }} - {{ item.date }}</span>
               </div>
-              <h3>{{ job.name }}</h3>
-              <p>{{ job.category || '岗位训练' }}</p>
-              <div class="tag-row">
-                <span v-for="tag in parseTags(job.keywords)" :key="tag">{{ tag }}</span>
+              <div class="interview-right">
+                <span v-if="item.status === 'completed'" class="score-badge" :class="scoreLevel(item.score)">{{ item.score }}</span>
+                <span v-else-if="item.status === 'in_progress'" class="status-tag progress">进行中</span>
+                <span v-else class="status-tag interrupted">已中断</span>
+                <router-link :to="item.status === 'completed' ? `/history/${item.id}` : '/interview'" class="interview-action" :class="{ 'action-primary': item.status !== 'completed' }">
+                  {{ item.status === 'completed' ? '查看' : '继续' }}
+                </router-link>
               </div>
-            </article>
-            <el-empty v-if="!jobsLoading && jobs.length === 0" description="暂无岗位" :image-size="60" />
+            </div>
+            </template>
           </div>
         </section>
 
-        <section class="panel records-panel">
-          <header class="panel-header">
-            <h2>最近面试记录</h2>
-            <router-link v-if="records.length" to="/history">全部 <el-icon><ArrowRight /></el-icon></router-link>
-          </header>
-
-          <div v-if="records.length" class="record-table">
-            <div class="record-row record-head">
-              <span>日期</span>
-              <span>岗位</span>
-              <span>得分</span>
-              <span>状态</span>
+        <div class="side-stack">
+          <section class="card actions-section">
+            <h2 class="card-title">快捷入口</h2>
+            <div class="action-list">
+              <router-link v-for="(a, i) in quickActions" :key="i" :to="a.to" class="action-link reveal-item" :style="{ '--delay': i * 60 + 'ms' }">
+                <div class="action-icon" :style="{ color: a.color, background: a.bg }"><span v-html="a.icon"></span></div>
+                <div class="action-text"><span class="action-name">{{ a.title }}</span><span class="action-desc">{{ a.desc }}</span></div>
+                <svg class="action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+              </router-link>
             </div>
-            <div v-for="record in records" :key="record.sessionId" class="record-row">
-              <span>{{ formatDate(record.startTime) }}</span>
-              <span>{{ record.jobName }}</span>
-              <span>{{ record.totalScore != null ? record.totalScore + ' 分' : '—' }}</span>
-              <span><em :class="statusClass(record.status)">{{ statusLabel(record.status) }}</em></span>
-            </div>
-          </div>
+          </section>
 
-          <el-empty
-            v-else
-            description="还没有面试记录，去完成第一次模拟面试吧"
-            :image-size="90"
-          >
-            <el-button type="primary" @click="router.push('/jobs')">开始第一次面试</el-button>
-          </el-empty>
-        </section>
+          <section class="card radar-section">
+            <h2 class="card-title" style="margin-bottom: var(--space-5);">能力雷达</h2>
+            <div class="radar-full-wrap" @mouseenter="radarHover = true" @mouseleave="radarHover = false">
+              <svg :viewBox="`0 0 ${radarSize} ${radarSize}`" class="radar-full-svg">
+                <polygon v-for="scale in [0.25, 0.5, 0.75]" :key="scale" :points="radarGrid(scale)" fill="none" stroke="var(--neutral-200)" stroke-width="1"/>
+                <polygon :points="radarGrid(1)" fill="none" stroke="var(--neutral-300)" stroke-width="1.5"/>
+                <line v-for="(lbl, idx) in radarLabels" :key="'axis'+idx" :x1="radarCenter" :y1="radarCenter" :x2="radarPoints[idx].x" :y2="radarPoints[idx].y" stroke="var(--neutral-200)" stroke-width="1"/>
+                <polygon :points="radarData" :fill="radarHover ? 'rgba(16,185,129,0.18)' : 'rgba(16,185,129,0.10)'" stroke="var(--accent-500)" stroke-width="2" class="radar-poly"/>
+                <circle v-for="(p, i) in radarPoints" :key="i" :cx="p.x" :cy="p.y" r="4" :fill="radarHover ? 'var(--accent-500)' : 'var(--accent-400)'" class="radar-dot" :style="{ transitionDelay: i * 40 + 'ms' }"/>
+              </svg>
+              <div class="radar-legend">
+                <span v-for="(lbl, i) in radarLabels" :key="i" class="radar-legend-item">{{ lbl }}</span>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
-
-      <aside class="dashboard-side">
-        <section class="panel stats-panel">
-          <header class="panel-header">
-            <h2>我的训练数据</h2>
-            <router-link to="/report">能力报告 <el-icon><ArrowRight /></el-icon></router-link>
-          </header>
-
-          <div class="stat-list">
-            <div class="stat-item">
-              <span class="stat-icon blue"><el-icon><VideoCamera /></el-icon></span>
-              <div>
-                <strong>{{ stats.finishedInterviews }}</strong>
-                <span>完成面试（场）</span>
-              </div>
-            </div>
-            <div class="stat-item">
-              <span class="stat-icon green"><el-icon><DataAnalysis /></el-icon></span>
-              <div>
-                <strong>{{ stats.averageScore || '—' }}</strong>
-                <span>平均得分</span>
-              </div>
-            </div>
-            <div class="stat-item">
-              <span class="stat-icon orange"><el-icon><Aim /></el-icon></span>
-              <div>
-                <strong>{{ stats.highestScore || '—' }}</strong>
-                <span>最高得分</span>
-              </div>
-            </div>
-            <div class="stat-item">
-              <span class="stat-icon purple"><el-icon><Reading /></el-icon></span>
-              <div>
-                <strong>{{ stats.skillCount }}</strong>
-                <span>画像技能（个）</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel profile-panel">
-          <header class="panel-header">
-            <h2>个人画像</h2>
-            <router-link to="/resume">去完善 <el-icon><ArrowRight /></el-icon></router-link>
-          </header>
-          <div v-if="skills.length" class="skill-tags">
-            <span v-for="s in skills" :key="s">{{ s }}</span>
-          </div>
-          <el-empty v-else description="还没有简历画像，填写简历后自动生成" :image-size="70" />
-        </section>
-      </aside>
     </div>
-  </div>
+  </AppLayout>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import {
-  Aim,
-  ArrowRight,
-  CollectionTag,
-  DataAnalysis,
-  Document,
-  Reading,
-  VideoCamera
-} from '@element-plus/icons-vue'
-import { useUserStore } from '@/store/user'
-import { getJobList, getMyStats, getInterviewRecords, getMyResume } from '@/api'
-import dashboardDeco from '@/assets/generated/dashboard-deco-ui.jpg'
+import { computed, ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import AppLayout from '../components/layout/AppLayout.vue'
+import { useUserStore } from '../store/user'
+import { getMe, getMyStats, getInterviewRecords } from '../api'
 
-const router = useRouter()
 const userStore = useUserStore()
+const loading = ref(true)
 
-const hour = new Date().getHours()
-const greeting = computed(() => {
-  if (hour < 12) return '上午好'
-  if (hour < 14) return '中午好'
-  if (hour < 18) return '下午好'
-  return '晚上好'
-})
 const displayName = computed(() => userStore.nickname || userStore.username || '同学')
 
-const quickActions = [
-  { title: '开始面试', desc: '选择岗位，开启 AI 模拟面试', cta: '立即开始', path: '/jobs', icon: VideoCamera, theme: 'purple' },
-  { title: '面试准备', desc: '查看岗位，填写简历画像', cta: '去准备', path: '/jobs', icon: Document, theme: 'blue' },
-  { title: '能力报告', desc: '查看历次面试评估结果', cta: '去查看', path: '/report', icon: DataAnalysis, theme: 'green' }
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 6) return '夜深了'
+  if (h < 12) return '早上好'
+  if (h < 14) return '中午好'
+  if (h < 18) return '下午好'
+  return '晚上好'
+})
+
+// AI Quotes
+const quotes = [
+  '上次的技术深度回答不错，下次试试用 STAR 法则展开项目经验',
+  '你的逻辑表达在进步，注意控制每段回答在 2 分钟内',
+  '系统设计题是你的强项，行为面试可以多准备具体案例',
+  '建议今天练一道算法 + 一道行为面试，保持手感',
+  '连续练习让你的表达分数提升了 12%，继续保持',
+]
+const quoteIdx = ref(0)
+const currentQuote = computed(() => quotes[quoteIdx.value])
+function cycleQuote() { quoteIdx.value = (quoteIdx.value + 1) % quotes.length }
+
+// Mini Radar
+const radarSize = 120
+const radarCenter = radarSize / 2
+const radarR = 42
+const radarValues = ref([88, 72, 85, 78, 65])
+const radarLabels = ['表达', '逻辑', '技术', '匹配', '抗压']
+const radarHover = ref(false)
+
+function radarGrid(scale) {
+  return radarValues.value.map((_, i) => {
+    const a = (Math.PI * 2 * i) / radarValues.value.length - Math.PI / 2
+    const r = radarR * scale
+    return `${radarCenter + r * Math.cos(a)},${radarCenter + r * Math.sin(a)}`
+  }).join(' ')
+}
+
+const radarPoints = computed(() => radarValues.value.map((v, i) => {
+  const a = (Math.PI * 2 * i) / radarValues.value.length - Math.PI / 2
+  const r = radarR * (v / 100)
+  return { x: radarCenter + r * Math.cos(a), y: radarCenter + r * Math.sin(a) }
+}))
+
+const radarData = computed(() => radarPoints.value.map(p => `${p.x},${p.y}`).join(' '))
+
+// Todos
+const todos = reactive([
+  { text: '完成 1 次前端面试', done: false },
+  { text: '复习 Vue 3 组合式 API', done: true },
+  { text: '更新简历项目经历', done: false },
+])
+
+// Stats
+const stats = ref([
+  { label: '面试次数', display: '--', value: 0, trend: '--', trendType: 'neutral', depth: '#059669', spark: [0], trendData: [0], trendLabels: ['--'] },
+  { label: '平均得分', display: '--', value: 0, trend: '--', trendType: 'neutral', depth: '#10b981', spark: [0], trendData: [0], trendLabels: ['--'] },
+  { label: '最高得分', display: '--', value: 0, trend: '--', trendType: 'neutral', depth: '#34d399', spark: [0], trendData: [0], trendLabels: ['--'] },
+  { label: '连续练习', display: '--', value: 0, trend: '--', trendType: 'neutral', depth: '#6ee7b7', spark: [0], trendData: [0], trendLabels: ['--'] },
+])
+
+const expandedStat = ref(-1)
+const hoveredStat = ref(-1)
+function toggleStat(i) { expandedStat.value = expandedStat.value === i ? -1 : i }
+
+// Sparkline SVG
+function sparklinePoints(data) {
+  if (!data || !data.length) return ''
+  const max = Math.max(...data)
+  const min = Math.min(...data)
+  const range = max - min || 1
+  return data.map((v, i) => `${(i / (data.length - 1)) * 100},${28 - ((v - min) / range) * 24}`).join(' ')
+}
+
+// Trend chart SVG
+function trendPoints(data) {
+  if (!data || !data.length) return []
+  const max = Math.max(...data) * 1.1
+  const min = Math.min(...data) * 0.9
+  const range = max - min || 1
+  return data.map((v, i) => ({ x: (i / (data.length - 1)) * 200, y: 55 - ((v - min) / range) * 45 }))
+}
+
+function trendLine(data) {
+  return trendPoints(data).map(p => `${p.x},${p.y}`).join(' ')
+}
+
+function trendArea(data) {
+  const pts = trendPoints(data)
+  if (!pts.length) return ''
+  const line = pts.map(p => `${p.x},${p.y}`).join(' L')
+  return `M${line} L200,60 L0,60 Z`
+}
+
+// Recent Interviews
+const recentInterviews = ref([])
+const avatarColors = [
+  'rgba(16,185,129,0.1)',
+  'rgba(59,130,246,0.1)',
+  'rgba(245,158,11,0.1)',
+  'rgba(139,92,246,0.1)',
+  'rgba(239,68,68,0.1)',
 ]
 
-// 真实数据
-const jobs = ref([])
-const jobsLoading = ref(false)
-const records = ref([])
-const stats = ref({
-  finishedInterviews: 0,
-  ongoingInterviews: 0,
-  averageScore: 0,
-  highestScore: 0,
-  reportCount: 0,
-  skillCount: 0
-})
-const skills = ref([])
+function formatInterviewDate(createTime) {
+  if (!createTime) return ''
+  const now = new Date()
+  const then = new Date(createTime)
+  const diffMs = now - then
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 60) return `${diffMin}分钟前`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}小时前`
+  const diffDay = Math.floor(diffHr / 24)
+  if (diffDay < 30) return `${diffDay}天前`
+  return then.toLocaleDateString('zh-CN')
+}
 
-const parseTags = (keywords) => {
+const quickActions = [
+  { to: '/job-select', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>', color: '#10b981', bg: 'rgba(16,185,129,0.08)', title: '面试准备', desc: '选岗位、上传简历' },
+  { to: '/interview', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', title: '快速面试', desc: '直接进入模拟' },
+  { to: '/history', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', title: '历史记录', desc: '查看报告与详情' },
+]
+
+const trendData = [
+  { label: '表达', value: 88, color: '#10b981' },
+  { label: '逻辑', value: 72, color: '#3b82f6' },
+  { label: '技术', value: 85, color: '#8b5cf6' },
+  { label: '匹配', value: 78, color: '#f59e0b' },
+  { label: '抗压', value: 65, color: '#ef4444' },
+]
+
+function scoreLevel(s) { if (s >= 85) return 'high'; if (s >= 70) return 'mid'; return 'low' }
+
+// Number counter animation
+function animateNumbers() {
+  const currentStats = stats.value
+  document.querySelectorAll('.stat-num').forEach((el, i) => {
+    const stat = currentStats[i]
+    if (!stat) return
+    const target = stat.value
+    const duration = 1200
+    const start = performance.now()
+    const suffix = stat.display.replace(/[\d.]/g, '')
+    const isDecimal = String(target).includes('.')
+    function tick(now) {
+      const p = Math.min((now - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - p, 3)
+      const v = target * eased
+      el.textContent = (isDecimal ? v.toFixed(1) : Math.floor(v)) + suffix
+      if (p < 1) requestAnimationFrame(tick)
+      else el.textContent = stat.display
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+let observer = null
+
+async function fetchDashboardData() {
+  loading.value = true
   try {
-    return JSON.parse(keywords || '[]').slice(0, 3)
-  } catch {
-    return []
+    const [meRes, statsRes, recordsRes] = await Promise.allSettled([
+      getMe(),
+      getMyStats(),
+      getInterviewRecords(),
+    ])
+
+    // Update user info
+    if (meRes.status === 'fulfilled' && meRes.value) {
+      const me = meRes.value
+      if (me.nickname) userStore.nickname = me.nickname
+      if (me.username) userStore.username = me.username
+    }
+
+    // Update stats
+    if (statsRes.status === 'fulfilled' && statsRes.value) {
+      const s = statsRes.value
+      const totalInterviews = s.finishedInterviews ?? 0
+      const averageScore = s.averageScore ?? 0
+      const highestScore = s.highestScore ?? 0
+      const streakDays = s.streakDays ?? 0
+
+      stats.value = [
+        {
+          label: '面试次数',
+          display: String(totalInterviews),
+          value: totalInterviews,
+          trend: totalInterviews > 0 ? `共 ${totalInterviews} 次` : '--',
+          trendType: totalInterviews > 0 ? 'up' : 'neutral',
+          depth: '#059669',
+          spark: [totalInterviews],
+          trendData: [totalInterviews],
+          trendLabels: ['总计'],
+        },
+        {
+          label: '平均得分',
+          display: averageScore > 0 ? averageScore.toFixed(1) : '--',
+          value: averageScore,
+          trend: averageScore >= 80 ? '优秀' : averageScore >= 60 ? '良好' : '--',
+          trendType: averageScore >= 80 ? 'up' : 'neutral',
+          depth: '#10b981',
+          spark: [averageScore],
+          trendData: [averageScore],
+          trendLabels: ['平均'],
+        },
+        {
+          label: '最高得分',
+          display: highestScore > 0 ? String(highestScore) : '--',
+          value: highestScore,
+          trend: highestScore > 0 ? '最佳' : '--',
+          trendType: 'neutral',
+          depth: '#34d399',
+          spark: [highestScore],
+          trendData: [highestScore],
+          trendLabels: ['最高'],
+        },
+        {
+          label: '连续练习',
+          display: `${streakDays}天`,
+          value: streakDays,
+          trend: streakDays > 0 ? `已连续 ${streakDays} 天` : '--',
+          trendType: streakDays > 0 ? 'up' : 'neutral',
+          depth: '#6ee7b7',
+          spark: [streakDays],
+          trendData: [streakDays],
+          trendLabels: ['天数'],
+        },
+      ]
+    }
+
+    // Update recent interviews (top 3)
+    if (recordsRes.status === 'fulfilled' && Array.isArray(recordsRes.value)) {
+      const records = recordsRes.value.slice(0, 3)
+      recentInterviews.value = records.map((r, i) => ({
+        id: r.sessionId,
+        position: r.jobName || '未知岗位',
+        company: '',
+        score: r.totalScore ?? 0,
+        date: formatInterviewDate(r.createTime),
+        status: r.status === 'FINISHED' ? 'completed' : r.status === 'IN_PROGRESS' ? 'in_progress' : 'interrupted',
+        avatarBg: avatarColors[i % avatarColors.length],
+      }))
+    }
+  } catch (err) {
+    console.warn('Dashboard: failed to fetch data', err)
+  } finally {
+    loading.value = false
   }
 }
-
-const formatDate = (dt) => {
-  if (!dt) return '—'
-  return String(dt).replace('T', ' ').slice(0, 16)
-}
-
-const statusLabel = (s) => ({ FINISHED: '已完成', ONGOING: '进行中', ABORTED: '已中断' }[s] || s)
-const statusClass = (s) => ({ FINISHED: 'good', ONGOING: 'ok', ABORTED: 'bad' }[s] || 'ok')
 
 onMounted(async () => {
-  jobsLoading.value = true
-  try {
-    jobs.value = (await getJobList()).slice(0, 3)
-  } finally {
-    jobsLoading.value = false
-  }
+  await fetchDashboardData()
 
-  try {
-    records.value = (await getInterviewRecords()).slice(0, 5)
-  } catch {
-    records.value = []
-  }
+  // Wait for DOM to update with new data before observing
+  await nextTick()
 
-  try {
-    stats.value = await getMyStats()
-  } catch {
-    /* 保持默认 0 */
-  }
+  observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible')
+        observer.unobserve(entry.target)
+      }
+    })
+  }, { threshold: 0.1 })
+  document.querySelectorAll('.reveal-item').forEach(el => observer.observe(el))
 
-  try {
-    const resume = await getMyResume()
-    if (resume && resume.skills) {
-      skills.value = JSON.parse(resume.skills).slice(0, 12)
-    }
-  } catch {
-    skills.value = []
+  // Animate numbers when stats visible
+  const statsEl = document.querySelector('.stats-row')
+  if (statsEl) {
+    const numObs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) { animateNumbers(); numObs.unobserve(statsEl) }
+    }, { threshold: 0.3 })
+    numObs.observe(statsEl)
   }
 })
+
+onUnmounted(() => { observer?.disconnect() })
 </script>
 
 <style scoped>
 .dashboard {
-  width: min(1280px, 100%);
+  max-width: var(--container-max);
   margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-16);
 }
 
+.reveal-item { opacity: 0; transform: translateY(14px); transition: opacity var(--duration-slow) var(--ease-out-expo), transform var(--duration-slow) var(--ease-out-expo); transition-delay: var(--delay, 0ms); }
+.reveal-item.visible { opacity: 1; transform: translateY(0); }
+
+/* ==================== HERO STRIP ==================== */
 .hero-strip {
-  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  background: var(--surface-elevated);
+  border: 1.5px solid rgba(16, 185, 129, 0.18);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-8);
+  animation: fade-in-up var(--duration-slow) var(--ease-out-expo);
+}
+
+
+.strip-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.strip-right {
+  display: flex;
+  gap: var(--space-4);
+}
+
+/* AI Bubble */
+.bubble-wrap { cursor: pointer; }
+
+.ai-bubble {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  max-width: 420px;
+  transition: transform var(--duration-normal) var(--ease-spring);
+}
+
+.ai-bubble:hover { transform: translateY(-2px); }
+
+.bubble-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-50);
+  color: var(--accent-600);
+  display: flex;
   align-items: center;
-  min-height: 112px;
-  margin-bottom: 22px;
-}
-
-.hero-copy h1 {
-  color: #061933;
-  font-size: 30px;
-  font-weight: 950;
-  line-height: 1.15;
-}
-
-.hero-copy p {
-  margin-top: 8px;
-  color: #62718c;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.hero-quote {
-  position: relative;
-  min-height: 112px;
-  overflow: hidden;
-}
-
-.hero-quote p {
-  position: relative;
-  z-index: 1;
-  margin: 26px 130px 0 0;
-  color: #52617e;
-  font-size: 14px;
+  justify-content: center;
+  font-size: 10px;
   font-weight: 700;
-  text-align: center;
+  flex-shrink: 0;
 }
 
-.hero-quote p::before,
-.hero-quote p::after {
-  color: #7ba8ff;
-  font-size: 44px;
-  font-weight: 900;
-  line-height: 0;
+.bubble-body {
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  border-top-left-radius: var(--radius-xs);
+  padding: var(--space-3) var(--space-4);
+  position: relative;
 }
 
-.hero-quote p::before {
-  content: '“';
-  margin-right: 12px;
+.bubble-text {
+  font-size: 13px;
+  color: var(--neutral-600);
+  line-height: 1.6;
 }
 
-.hero-quote p::after {
-  content: '”';
-  margin-left: 12px;
+.bubble-tag {
+  font-size: 10px;
+  color: var(--neutral-400);
+  margin-top: 4px;
+  display: block;
 }
 
-.hero-quote img {
-  position: absolute;
-  right: -64px;
-  top: -28px;
-  width: 220px;
-  height: 156px;
-  object-fit: cover;
-  object-position: right center;
-  border-radius: 28px;
-  mix-blend-mode: multiply;
+.hero-info {}
+
+.hero-time {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--neutral-400);
+  margin-bottom: var(--space-1);
 }
 
-.quick-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-  margin-bottom: 22px;
+.hero-name {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 700;
+  color: var(--neutral-900);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
-.action-card,
-.panel {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid #dbe4f2;
-  border-radius: 8px;
-  box-shadow: 0 14px 34px rgba(34, 74, 137, 0.06);
-}
-
-.action-card {
-  display: grid;
-  grid-template-columns: 68px 1fr;
-  gap: 24px;
+/* CTA Button */
+.hero-cta {
+  display: inline-flex;
   align-items: center;
-  min-height: 136px;
-  padding: 24px;
-  cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  gap: var(--space-3);
+  text-decoration: none;
+  width: fit-content;
+  transition: transform var(--duration-normal) var(--ease-spring);
 }
 
-.action-card:hover {
-  box-shadow: 0 18px 42px rgba(34, 92, 184, 0.11);
+.hero-cta:hover { transform: translateX(4px); }
+
+.cta-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all var(--duration-normal) var(--ease-spring);
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.3);
+}
+
+.hero-cta:hover .cta-ring {
+  background: var(--accent-400);
+  box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.08);
+  transform: scale(1.05);
+}
+
+.cta-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+/* Mini Radar */
+.mini-radar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  width: 140px;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out-expo);
+}
+
+.mini-radar-card:hover { border-color: var(--accent-300); }
+
+.mini-label { font-size: 11px; color: var(--neutral-400); font-weight: 500; }
+
+.mini-radar-svg { width: 90px; height: 90px; }
+
+.radar-poly { transition: fill var(--duration-normal); }
+.radar-dot { transition: fill var(--duration-fast); }
+
+/* Full Radar */
+.radar-full-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.radar-full-svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+.radar-legend {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.radar-legend-item {
+  font-size: var(--text-xs);
+  color: var(--neutral-500);
+  font-weight: 500;
+}
+
+/* Todo Card */
+.todo-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  width: 180px;
+}
+
+.todo-list { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--neutral-600);
+  cursor: pointer;
+  padding: 3px 0;
+  transition: color var(--duration-fast);
+}
+
+.todo-item.done .todo-text { text-decoration: line-through; color: var(--neutral-400); }
+
+.todo-item input { display: none; }
+
+.todo-check {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--neutral-300);
+  border-radius: 3px;
+  transition: all var(--duration-fast);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.todo-item.done .todo-check {
+  background: var(--accent-500);
+  border-color: var(--accent-500);
+}
+
+.todo-item.done .todo-check::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 1px;
+  width: 4px; height: 7px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.todo-text { line-height: 1.3; }
+
+/* ==================== STATS ROW ==================== */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.stat-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+  overflow: hidden;
+  transition: all var(--duration-normal) var(--ease-out-expo);
+  min-height: 90px;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--depth, var(--accent-500));
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.stat-card:hover::before,
+.stat-card.expanded::before { opacity: 1; }
+
+.stat-card:hover {
+  border-color: var(--neutral-300);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   transform: translateY(-2px);
 }
 
-.action-icon {
-  display: grid;
-  width: 64px;
-  height: 64px;
-  color: #fff;
-  place-items: center;
-  border-radius: 18px;
-  font-size: 30px;
+.stat-card.expanded {
+  border-color: var(--accent-300);
 }
 
-.action-icon.purple {
-  background: linear-gradient(135deg, #8c57ff, #5a34ec);
-  box-shadow: 0 18px 34px rgba(105, 64, 244, 0.28);
-}
-
-.action-icon.blue {
-  background: linear-gradient(135deg, #4a93ff, #196eff);
-  box-shadow: 0 18px 34px rgba(25, 110, 255, 0.24);
-}
-
-.action-icon.green {
-  background: linear-gradient(135deg, #46dc95, #09bd76);
-  box-shadow: 0 18px 34px rgba(9, 189, 118, 0.22);
-}
-
-.action-card h2 {
-  color: #10213c;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.action-card p {
-  margin-top: 7px;
-  color: #6c7a92;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.action-card button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  margin-top: 12px;
-  padding: 0 15px;
-  color: #fff;
-  background: linear-gradient(135deg, #2f80ff, #1067f9);
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 800;
-}
-
-.action-card:first-child button {
-  background: linear-gradient(135deg, #8058ff, #5a30ee);
-}
-
-.action-card:last-child button {
-  background: linear-gradient(135deg, #27ce82, #08b66d);
-}
-
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
-  gap: 22px;
-}
-
-.dashboard-main {
-  display: grid;
-  gap: 22px;
-  min-width: 0;
-}
-
-.dashboard-side {
-  display: grid;
-  align-content: start;
-  gap: 22px;
-  min-width: 0;
-}
-
-.panel {
-  padding: 18px;
-}
-
-.panel-header {
+.stat-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
 }
 
-.panel-header h2 {
-  color: #10213c;
-  font-size: 18px;
-  font-weight: 900;
-}
+.stat-label { font-size: 13px; color: var(--neutral-500); font-weight: 500; }
 
-.panel-header a {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #6c7a92;
-  font-size: 14px;
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xl);
   font-weight: 700;
+  color: var(--neutral-900);
+  line-height: 1;
+  letter-spacing: -0.03em;
 }
 
-.job-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  min-height: 120px;
-}
-
-.job-card {
-  min-width: 0;
-  padding: 18px 16px 14px;
-  border: 1px solid #dbe4f2;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-}
-
-.job-card:hover {
-  border-color: rgba(38, 118, 255, 0.35);
-  box-shadow: 0 14px 30px rgba(38, 118, 255, 0.09);
-  transform: translateY(-2px);
-}
-
-.job-brand {
-  display: grid;
-  width: 50px;
-  height: 50px;
-  margin-bottom: 14px;
-  place-items: center;
-  color: #3477c8;
-  font-size: 31px;
-}
-
-.job-card h3 {
-  color: #13243f;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.job-card p {
-  margin-top: 6px;
-  color: #6b7a94;
-  font-size: 14px;
+.stat-trend {
+  font-size: 11px;
   font-weight: 600;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
 }
 
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 32px;
-  margin-top: 16px;
-}
+.stat-trend.up { color: var(--accent-700); background: var(--accent-50); }
+.stat-trend.neutral { color: var(--neutral-500); background: var(--neutral-100); }
 
-.tag-row span {
-  padding: 7px 10px;
-  color: #3b6ef5;
-  background: #eef4ff;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.record-table {
+.stat-bar {
+  height: 3px;
+  background: var(--neutral-100);
+  border-radius: 2px;
   overflow: hidden;
-  border: 1px solid #e0e7f1;
-  border-radius: 8px;
+  margin-top: auto;
 }
 
-.record-row {
-  display: grid;
-  grid-template-columns: 1.4fr 1.7fr 0.8fr 0.9fr;
-  align-items: center;
-  min-height: 64px;
-  padding: 0 24px;
-  color: #263a5a;
-  border-top: 1px solid #e8eef6;
-  font-size: 15px;
+.stat-bar-fill {
+  height: 100%;
+  background: var(--depth, var(--accent-500));
+  border-radius: 2px;
+  transition: width 1s var(--ease-out-expo);
 }
 
-.record-row:first-child {
-  border-top: 0;
+/* Sparkline */
+.sparkline {
+  width: 100%;
+  height: 24px;
+  margin-top: var(--space-1);
+  animation: fade-in 0.3s var(--ease-out-expo);
 }
 
-.record-head {
-  min-height: 50px;
-  color: #63728e;
-  background: #f8faff;
-  font-weight: 800;
+/* Expanded Trend Chart */
+.trend-chart {
+  margin-top: var(--space-3);
+  animation: fade-in-up 0.3s var(--ease-out-expo);
 }
 
-.record-row em {
-  display: inline-flex;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-style: normal;
-  font-weight: 800;
-  font-size: 13px;
-}
+.trend-svg { width: 100%; height: 60px; }
 
-.record-row em.good {
-  color: #09a878;
-  background: #dbfbef;
-}
-
-.record-row em.ok {
-  color: #2874ef;
-  background: #e7f1ff;
-}
-
-.record-row em.bad {
-  color: #e8743b;
-  background: #fdeee4;
-}
-
-.stat-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.stat-item {
-  display: grid;
-  grid-template-columns: 44px 1fr;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  background: #f8faff;
-  border-radius: 8px;
-}
-
-.stat-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  color: #fff;
-  place-items: center;
-  border-radius: 12px;
-  font-size: 22px;
-}
-
-.stat-icon.blue { background: linear-gradient(135deg, #4a93ff, #196eff); }
-.stat-icon.green { background: linear-gradient(135deg, #46dc95, #09bd76); }
-.stat-icon.orange { background: linear-gradient(135deg, #ffb347, #ff9a24); }
-.stat-icon.purple { background: linear-gradient(135deg, #8c57ff, #5a34ec); }
-
-.stat-item strong {
-  display: block;
-  color: #122747;
-  font-size: 24px;
-  font-weight: 900;
-}
-
-.stat-item span {
-  color: #66758e;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.skill-tags {
+.trend-labels {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--neutral-400);
+  font-family: var(--font-mono);
+  margin-top: 4px;
 }
 
-.skill-tags span {
-  padding: 7px 12px;
-  color: #3b6ef5;
-  background: #eef4ff;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 700;
+.expand-enter-active { transition: all 0.3s var(--ease-out-expo); }
+.expand-leave-active { transition: all 0.2s ease-in; }
+.expand-enter-from, .expand-leave-to { opacity: 0; max-height: 0; margin-top: 0; }
+.expand-enter-to { max-height: 120px; }
+
+/* ==================== MAIN GRID ==================== */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  background: var(--accent-600);
+  color: white;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  border: none;
+  transition: all var(--duration-normal) var(--ease-out-expo);
+}
+.btn-primary:hover { background: var(--accent-500); box-shadow: var(--shadow-accent); transform: translateY(-2px); color: white; }
+.btn-primary:active { transform: translateY(0) scale(0.98); }
+
+.main-grid { display: grid; grid-template-columns: 1fr 380px; gap: var(--space-6); }
+.side-stack { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.card { background: var(--surface-elevated); border: 1px solid var(--neutral-200); border-radius: var(--radius-lg); padding: var(--space-6); }
+.card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); }
+.card-title { font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; color: var(--neutral-800); letter-spacing: -0.01em; }
+.card-hint { font-size: var(--text-xs); color: var(--neutral-400); font-family: var(--font-mono); }
+.link-more { font-size: var(--text-sm); color: var(--accent-600); font-weight: 500; transition: color var(--duration-fast); }
+.link-more:hover { color: var(--accent-500); }
+
+.interview-list { display: flex; flex-direction: column; }
+.interview-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4) var(--space-3); border-radius: var(--radius-md); transition: background var(--duration-fast); }
+.interview-row:hover { background: var(--neutral-50); }
+.interview-avatar { width: 40px; height: 40px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: var(--accent-700); flex-shrink: 0; }
+.interview-info { flex: 1; min-width: 0; }
+.interview-pos { display: block; font-size: var(--text-sm); font-weight: 500; color: var(--neutral-800); }
+.interview-meta { font-size: var(--text-xs); color: var(--neutral-400); font-family: var(--font-mono); }
+.interview-right { display: flex; align-items: center; gap: var(--space-3); }
+.score-badge { font-family: var(--font-mono); font-size: var(--text-base); font-weight: 700; }
+.score-badge.high { color: var(--accent-600); }
+.score-badge.mid { color: var(--color-warning); }
+.score-badge.low { color: var(--color-error); }
+.status-tag { font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: var(--radius-full); }
+.status-tag.progress { color: var(--accent-700); background: var(--accent-50); }
+.status-tag.interrupted { color: var(--neutral-500); background: var(--neutral-100); }
+.interview-action { font-size: 12px; font-weight: 500; color: var(--accent-600); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; transition: all var(--duration-fast); }
+.interview-action:hover { background: var(--accent-50); }
+.interview-action.action-primary { background: var(--accent-600); color: white; }
+.interview-action.action-primary:hover { background: var(--accent-500); }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
 }
 
-@media (max-width: 1060px) {
-  .hero-strip,
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-quote {
-    display: none;
-  }
-
-  .quick-actions,
-  .job-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.empty-icon {
+  color: var(--neutral-300);
+  margin-bottom: var(--space-4);
 }
 
-@media (max-width: 760px) {
-  .quick-actions,
-  .job-cards,
-  .stat-list {
-    grid-template-columns: 1fr;
-  }
+.empty-text {
+  font-size: var(--text-sm);
+  color: var(--neutral-400);
+  margin: 0;
+}
 
-  .action-card {
-    grid-template-columns: 64px 1fr;
-    gap: 18px;
-    min-height: auto;
-    padding: 22px;
-  }
+.action-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-4); }
+.action-link { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); text-decoration: none; transition: all var(--duration-normal) var(--ease-out-expo); }
+.action-link:hover { background: var(--neutral-50); transform: translateX(2px); }
+.action-icon { width: 36px; height: 36px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.action-text { flex: 1; }
+.action-name { display: block; font-size: var(--text-sm); font-weight: 500; color: var(--neutral-800); }
+.action-desc { font-size: var(--text-xs); color: var(--neutral-400); }
+.action-arrow { color: var(--neutral-300); transition: all var(--duration-fast); flex-shrink: 0; }
+.action-link:hover .action-arrow { color: var(--accent-500); transform: translateX(3px); }
 
-  .record-table {
-    overflow-x: auto;
-  }
+.trend-bars { display: flex; justify-content: space-between; align-items: flex-end; height: 180px; gap: var(--space-4); padding-top: var(--space-4); margin-top: var(--space-4); }
+.trend-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); height: 100%; }
+.trend-track { flex: 1; width: 100%; background: var(--neutral-100); border-radius: var(--radius-sm); display: flex; align-items: flex-end; overflow: hidden; }
+.trend-fill { width: 100%; background: var(--color, var(--accent-500)); border-radius: var(--radius-sm); transition: height 1s var(--ease-out-expo); display: flex; align-items: flex-start; justify-content: center; padding-top: var(--space-2); min-height: 8px; opacity: 0.85; }
+.trend-num { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: white; }
+.trend-name { font-size: var(--text-xs); color: var(--neutral-500); font-weight: 500; }
 
-  .record-row {
-    min-width: 600px;
-  }
+/* Responsive */
+@media (max-width: 1200px) {
+  .main-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .hero-strip { grid-template-columns: 1fr; }
+  .strip-right { flex-direction: row; justify-content: flex-start; }
+  .mini-radar-card, .todo-card { width: auto; flex: 1; }
+}
+
+@media (max-width: 768px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .strip-right { flex-direction: column; }
+  .hero-name { font-size: 1.5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-item { opacity: 1; transform: none; transition: none; }
+  .stat-card:hover { transform: none; }
+  .ai-bubble:hover { transform: none; }
+  .hero-cta:hover { transform: none; }
 }
 </style>

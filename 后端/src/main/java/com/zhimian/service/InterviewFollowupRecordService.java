@@ -29,6 +29,12 @@ public class InterviewFollowupRecordService {
 
     private final InterviewFollowupRecordMapper recordMapper;
 
+    /** 按会话ID删除所有追问记录 */
+    public void deleteBySession(Long sessionId) {
+        recordMapper.delete(new LambdaQueryWrapper<InterviewFollowupRecord>()
+                .eq(InterviewFollowupRecord::getSessionId, sessionId));
+    }
+
     /**
      * 安全保存一条追问记录：成功打 info 日志，失败打 warn 日志并吞掉异常，
      * 保证不会因为落库失败而中断面试。

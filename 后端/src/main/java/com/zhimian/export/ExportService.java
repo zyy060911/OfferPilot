@@ -50,14 +50,11 @@ public class ExportService {
         // 2. 渲染 HTML
         String html = renderHtml(report);
 
-        // 3. 写入临时 HTML 文件
+        // 3. PDF / DOCX: 写入临时 HTML 文件后通过 documents4j 转换为目标格式
         File htmlFile = writeTempHtml(reportId, html);
-
-        // 4. 调用 documents4j 转换
         try {
             return convertHtml(htmlFile, format);
         } finally {
-            // 清理临时 HTML 文件
             if (!htmlFile.delete()) {
                 htmlFile.deleteOnExit();
             }

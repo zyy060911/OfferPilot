@@ -21,6 +21,7 @@ import com.zhimian.service.InterviewFlowService;
 import com.zhimian.service.InterviewRecordService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -117,5 +118,12 @@ public class InterviewController {
             return v;
         }).collect(Collectors.toList());
         return Result.success(views);
+    }
+
+    /** 删除面试会话及其关联数据。仅允许删除本人会话。 */
+    @DeleteMapping("/{sessionId}")
+    public Result<Void> delete(@PathVariable Long sessionId) {
+        flowService.delete(sessionId);
+        return Result.success(null);
     }
 }

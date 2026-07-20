@@ -1,748 +1,813 @@
 <template>
-  <div class="login-page">
-    <section class="login-brand">
-      <header class="brand-header">
-        <img :src="brandMark" alt="智面幻境" />
-        <div>
-          <strong>智面幻境</strong>
-          <span>AI模拟面试训练系统</span>
+  <div class="login-page" @mousemove="onMouseMove">
+    <!-- Unified Background -->
+    <div class="bg-layer">
+      <div class="bg-gradient"></div>
+      <div class="bg-grid"></div>
+      <div class="bg-glow" :style="{ left: mouse.x + 'px', top: mouse.y + 'px' }"></div>
+    </div>
+
+    <!-- Left: Interactive AI Stage -->
+    <div class="stage-panel">
+      <div class="stage-content">
+        <div class="stage-logo">
+          <LogoIcon :size="36" />
+          <span class="stage-brand">OfferPilot</span>
         </div>
-      </header>
 
-      <div class="brand-main">
-        <h1>智面幻境</h1>
-        <h2>AI模拟面试训练系统</h2>
-        <p>沉浸式 AI 模拟面试，提升面试能力，赢得理想 Offer</p>
+        <h1 class="stage-title">
+          在这里<br />
+          <span class="title-accent">练出自信</span>
+        </h1>
+        <p class="stage-desc">AI 面试官实时追问, 多维能力评估, 让每次练习都接近真实</p>
 
-        <div class="portal-grid">
-          <button
-            v-for="portal in portals"
-            :key="portal.key"
-            type="button"
-            class="portal-card"
-            :class="portal.key"
-            @click="selectedRole = portal.role"
+        <!-- Interactive Scene -->
+        <div class="scene">
+          <!-- Central AI Orb -->
+          <div
+            class="ai-orb"
+            @mouseenter="orbActive = true"
+            @mouseleave="orbActive = false"
+            :class="{ active: orbActive }"
           >
-            <span class="portal-icon">
-              <el-icon><component :is="portal.icon" /></el-icon>
-            </span>
-            <span class="portal-copy">
-              <strong>{{ portal.title }}</strong>
-              <small>{{ portal.desc }}</small>
-            </span>
-            <span class="portal-arrow">
-              <el-icon><ArrowRight /></el-icon>
-            </span>
-          </button>
-        </div>
-      </div>
-
-      <img class="hero-image" :src="loginHero" alt="AI 模拟面试场景" />
-    </section>
-
-    <section class="login-panel">
-      <a class="help-link" href="#" @click.prevent>
-        <el-icon><QuestionFilled /></el-icon>
-        帮助中心
-      </a>
-
-      <div class="auth-card">
-        <div class="role-tabs" role="tablist" aria-label="登录角色">
-          <button
-            v-for="role in roles"
-            :key="role.key"
-            type="button"
-            role="tab"
-            :aria-selected="selectedRole === role.key"
-            :class="{ active: selectedRole === role.key }"
-            @click="selectedRole = role.key"
-          >
-            {{ role.label }}
-          </button>
-        </div>
-
-        <el-form
-          v-if="activeMode === 'login'"
-          ref="loginRef"
-          :model="loginForm"
-          :rules="rules"
-          class="auth-form"
-          size="large"
-          @keyup.enter="handleLogin"
-        >
-          <el-form-item prop="username">
-            <el-input
-              v-model="loginForm.username"
-              :prefix-icon="User"
-              placeholder="账号/学号"
-              class="auth-input"
-            />
-          </el-form-item>
-          <el-form-item prop="password">
-            <el-input
-              v-model="loginForm.password"
-              :type="showPassword ? 'text' : 'password'"
-              :prefix-icon="Lock"
-              placeholder="密码"
-              class="auth-input"
-            >
-              <template #suffix>
-                <button class="password-toggle" type="button" @click="showPassword = !showPassword">
-                  <el-icon><component :is="showPassword ? View : Hide" /></el-icon>
-                </button>
-              </template>
-            </el-input>
-          </el-form-item>
-
-          <div class="form-options">
-            <el-checkbox v-model="rememberMe">记住我</el-checkbox>
-            <a href="#" @click.prevent>忘记密码？</a>
+            <div class="orb-ring orb-ring-1"></div>
+            <div class="orb-ring orb-ring-2"></div>
+            <div class="orb-ring orb-ring-3"></div>
+            <div class="orb-core">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 2a5 5 0 0 1 5 5v3a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+              </svg>
+            </div>
+            <span class="orb-label">AI 面试官</span>
           </div>
 
-          <el-button
-            type="primary"
-            class="submit-btn"
-            :loading="loading"
-            size="large"
-            @click="handleLogin"
+          <!-- Floating Question Bubbles -->
+          <div
+            v-for="(q, i) in questionBubbles"
+            :key="i"
+            class="q-bubble"
+            :class="{ popped: q.popped }"
+            :style="q.style"
+            @mouseenter="popBubble(i)"
           >
-            登录系统
-          </el-button>
-        </el-form>
+            <span class="q-text">{{ q.text }}</span>
+            <div v-if="q.popped" class="q-ripple"></div>
+          </div>
 
-        <el-form
-          v-else
-          ref="registerRef"
-          :model="registerForm"
-          :rules="regRules"
-          class="auth-form"
-          size="large"
-        >
-          <el-form-item prop="username">
-            <el-input
-              v-model="registerForm.username"
-              :prefix-icon="User"
-              placeholder="用户名（3-20 位）"
-              class="auth-input"
-            />
-          </el-form-item>
-          <el-form-item prop="password">
-            <el-input
-              v-model="registerForm.password"
-              type="password"
-              :prefix-icon="Lock"
-              placeholder="密码（6-20 位）"
-              show-password
-              class="auth-input"
-            />
-          </el-form-item>
-          <el-form-item prop="nickname">
-            <el-input
-              v-model="registerForm.nickname"
-              :prefix-icon="Avatar"
-              placeholder="昵称（选填）"
-              class="auth-input"
-            />
-          </el-form-item>
-
-          <el-button
-            type="primary"
-            class="submit-btn"
-            :loading="loading"
-            size="large"
-            @click="handleRegister"
+          <!-- Score Meter -->
+          <div
+            class="score-meter"
+            :class="{ expanded: scoreExpanded }"
+            @mouseenter="scoreExpanded = true"
+            @mouseleave="scoreExpanded = false"
           >
-            创建账号
-          </el-button>
-        </el-form>
+            <div class="meter-track">
+              <div class="meter-fill" :style="{ width: interactionScore + '%' }"></div>
+            </div>
+            <div class="meter-label">
+              <span class="meter-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              </span>
+              <span class="meter-val">{{ interactionScore }}</span>
+              <span class="meter-hint">试试与场景互动</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-        <p class="register-line">
-          {{ activeMode === 'login' ? '没有账号？' : '已有账号？' }}
-          <button type="button" @click="activeMode = activeMode === 'login' ? 'register' : 'login'">
-            {{ activeMode === 'login' ? '立即注册' : '返回登录' }}
+    <!-- Right: Login Form -->
+    <div class="form-panel">
+      <div class="form-card">
+        <router-link to="/" class="back-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          返回首页
+        </router-link>
+
+        <div class="form-header">
+          <h1 class="form-title">欢迎回来</h1>
+          <p class="form-sub">登录你的 OfferPilot 账号</p>
+        </div>
+
+        <!-- Role Tabs -->
+        <div class="role-tabs">
+          <button
+            v-for="role in roles"
+            :key="role.id"
+            :class="['role-tab', { active: activeRole === role.id }]"
+            @click="activeRole = role.id"
+          >
+            <span v-html="role.icon"></span>
+            <span>{{ role.label }}</span>
           </button>
+        </div>
+
+        <!-- Form -->
+        <form class="login-form" @submit.prevent="handleLogin">
+          <div class="field">
+            <label class="field-label">账号</label>
+            <div class="field-input">
+              <svg class="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+              <input type="text" placeholder="请输入账号" v-model="form.account" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">密码</label>
+            <div class="field-input">
+              <svg class="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <input :type="showPwd ? 'text' : 'password'" placeholder="请输入密码" v-model="form.password" />
+              <button type="button" class="pwd-toggle" @click="showPwd = !showPwd">
+                <svg v-if="!showPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
+
+          <div class="form-row">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="form.remember" />
+              <span class="cb-box"></span>
+              记住我
+            </label>
+            <router-link to="/forgot-password" class="forgot">忘记密码?</router-link>
+          </div>
+
+          <button type="submit" class="submit-btn" :class="{ loading }" :disabled="loading">
+            <span v-if="loading">登录中...</span>
+            <template v-else>
+            <span>登 录</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+            </svg>
+            </template>
+          </button>
+        </form>
+
+        <p class="form-foot">
+          还没有账号?<router-link to="/register" class="reg-link">立即注册</router-link>
         </p>
       </div>
-
-      <footer class="login-footer">
-        <div class="trust-row">
-          <span><el-icon><CircleCheck /></el-icon>安全保障</span>
-          <span><el-icon><Lock /></el-icon>数据加密</span>
-          <span><el-icon><CircleCheck /></el-icon>隐私保护</span>
-        </div>
-        <p>© 2024 智面幻境 AI 模拟面试训练系统. 保留所有权利。</p>
-      </footer>
-    </section>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import {
-  ArrowRight,
-  Avatar,
-  Briefcase,
-  CircleCheck,
-  Hide,
-  Lock,
-  QuestionFilled,
-  School,
-  User,
-  View
-} from '@element-plus/icons-vue'
-import { useUserStore } from '@/store/user'
-import brandMark from '@/assets/generated/brand-mark-ui.png'
-import loginHero from '@/assets/generated/login-hero-ui.jpg'
+import { useUserStore } from '../store/user'
+import { login as loginApi } from '../api'
+import LogoIcon from '../components/ui/LogoIcon.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
-
-const activeMode = ref('login')
-const selectedRole = ref('STUDENT')
+const activeRole = ref('student')
+const showPwd = ref(false)
+const orbActive = ref(false)
+const scoreExpanded = ref(false)
+const btnHover = ref(false)
+const interactionScore = ref(12)
+const errorMsg = ref('')
 const loading = ref(false)
-const rememberMe = ref(true)
-const showPassword = ref(false)
-const loginRef = ref()
-const registerRef = ref()
+
+const mouse = reactive({ x: -200, y: -200 })
+
+const questionBubbles = reactive([
+  { text: '介绍一下你自己', style: { '--x': '10%', '--y': '20%', '--delay': '0s' }, popped: false },
+  { text: '你的优势是什么?', style: { '--x': '65%', '--y': '10%', '--delay': '0.3s' }, popped: false },
+  { text: '遇到过什么挑战?', style: { '--x': '75%', '--y': '55%', '--delay': '0.6s' }, popped: false },
+  { text: '为什么选我们?', style: { '--x': '5%', '--y': '65%', '--delay': '0.9s' }, popped: false },
+  { text: '技术栈是什么?', style: { '--x': '50%', '--y': '78%', '--delay': '1.2s' }, popped: false },
+])
 
 const roles = [
-  { key: 'STUDENT', label: '学生登录' },
-  { key: 'TEACHER', label: '教师登录' },
-  { key: 'ADMIN', label: '管理端' }
+  { id: 'student', label: '学生端', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' },
+  { id: 'teacher', label: '教师端', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+  { id: 'admin', label: '管理端', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4"/></svg>' },
 ]
 
-const portals = [
-  { key: 'student', role: 'STUDENT', title: '学生端', desc: '提升面试能力', icon: School },
-  { key: 'teacher', role: 'TEACHER', title: '教师端', desc: '高效教学管理', icon: Briefcase }
-]
+const form = reactive({ account: '', password: '', remember: false })
 
-const loginForm = reactive({ username: '', password: '' })
-const registerForm = reactive({ username: '', password: '', nickname: '' })
-
-const rules = {
-  username: [{ required: true, message: '请输入账号/学号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+function onMouseMove(e) {
+  mouse.x = e.clientX
+  mouse.y = e.clientY
 }
 
-const regRules = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '用户名长度为 3-20 位', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度为 6-20 位', trigger: 'blur' }
-  ]
+function popBubble(i) {
+  if (!questionBubbles[i].popped) {
+    questionBubbles[i].popped = true
+    interactionScore.value = Math.min(100, interactionScore.value + 8)
+    setTimeout(() => { questionBubbles[i].popped = false }, 2000)
+  }
 }
 
-const handleLogin = async () => {
-  await loginRef.value.validate(async (valid) => {
-    if (!valid) return
-    loading.value = true
-    try {
-      const data = await userStore.login(loginForm)
-      ElMessage.success('登录成功')
-      // 按角色落地：教师 / 管理员进入教师端总览，其余进入学生端首页
-      const role = data.role || userStore.role
-      router.push(role === 'TEACHER' || role === 'ADMIN' ? '/teacher/dashboard' : '/home')
-    } catch (e) {
-      // 错误由请求拦截器统一处理
-    } finally {
-      loading.value = false
+async function handleLogin() {
+  if (loading.value) return
+  errorMsg.value = ''
+  loading.value = true
+  try {
+    const data = await loginApi({ username: form.account, password: form.password })
+    userStore.setAuth(data)
+    const role = (data.role || '').toUpperCase()
+    if (role === 'TEACHER' || role === 'ADMIN') {
+      router.push('/teacher/dashboard')
+    } else {
+      router.push('/home')
     }
-  })
+  } catch (e) {
+    errorMsg.value = e.response?.data?.message || e.message || '登录失败，请重试'
+  } finally {
+    loading.value = false
+  }
 }
 
-const handleRegister = async () => {
-  await registerRef.value.validate(async (valid) => {
-    if (!valid) return
-    loading.value = true
-    try {
-      await userStore.register({ ...registerForm, role: selectedRole.value })
-      ElMessage.success('注册成功，请登录')
-      activeMode.value = 'login'
-      loginForm.username = registerForm.username
-    } catch (e) {
-      // 错误由请求拦截器统一处理
-    } finally {
-      loading.value = false
+onMounted(() => {
+  // Ticking score animation on orb hover
+  let interval = null
+  const watchOrb = () => {
+    if (orbActive.value) {
+      interval = setInterval(() => {
+        interactionScore.value = Math.min(100, interactionScore.value + 1)
+      }, 300)
+    } else {
+      clearInterval(interval)
     }
-  })
-}
+  }
+  // Simple reactive watcher
+  setInterval(() => {
+    if (orbActive.value && interactionScore.value < 100) {
+      interactionScore.value = Math.min(100, interactionScore.value + 0.5)
+    }
+  }, 200)
+})
 </script>
 
 <style scoped>
 .login-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(440px, 0.72fr);
-  min-width: 320px;
   min-height: 100dvh;
-  overflow: hidden;
-  color: #0b1e39;
-  background: #f6f9ff;
-}
-
-.login-brand {
+  display: flex;
   position: relative;
-  min-height: 100dvh;
-  padding: 30px 54px 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 98% 24%, rgba(117, 139, 255, 0.18), transparent 20rem),
-    radial-gradient(circle at 3% 82%, rgba(30, 112, 255, 0.16), transparent 22rem),
-    linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
 }
 
-.login-brand::before,
-.login-brand::after {
-  position: absolute;
-  content: '';
+/* === Background === */
+.bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
-  border: 6px solid rgba(78, 124, 255, 0.12);
+}
+
+.bg-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #f8faf9 0%, #f0faf5 30%, #fafafa 60%, #f5f5f5 100%);
+}
+
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.06) 1px, transparent 0);
+  background-size: 40px 40px;
+}
+
+.bg-glow {
+  position: fixed;
+  width: 400px;
+  height: 400px;
   border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+  transform: translate(-50%, -50%);
+  transition: left 0.3s ease-out, top 0.3s ease-out;
+  pointer-events: none;
 }
 
-.login-brand::before {
-  width: 520px;
-  height: 520px;
-  right: -240px;
-  top: 0;
-}
-
-.login-brand::after {
-  width: 560px;
-  height: 560px;
-  left: -380px;
-  bottom: 20px;
-}
-
-.brand-header {
+/* === Stage Panel (Left) === */
+.stage-panel {
   position: relative;
-  z-index: 2;
+  z-index: 1;
+  flex: 0 0 50%;
   display: flex;
   align-items: center;
-  gap: 14px;
+  padding: var(--space-10);
 }
 
-.brand-header img {
-  width: 58px;
-  height: 58px;
-  object-fit: cover;
-  border-radius: 16px;
-  mix-blend-mode: multiply;
+.stage-content {
+  max-width: 500px;
+  width: 100%;
 }
 
-.brand-header strong,
-.brand-header span {
-  display: block;
-}
-
-.brand-header strong {
-  font-size: 22px;
-  font-weight: 900;
-  line-height: 1.1;
-}
-
-.brand-header span {
-  margin-top: 5px;
-  color: #34435f;
-  font-size: 14px;
-}
-
-.brand-main {
-  position: relative;
-  z-index: 2;
-  width: min(620px, 100%);
-  margin: 64px auto 0;
-}
-
-.brand-main h1 {
-  color: #2547f4;
-  font-size: clamp(44px, 4vw, 68px);
-  font-weight: 950;
-  line-height: 0.98;
-  text-shadow: 0 10px 24px rgba(37, 83, 255, 0.12);
-}
-
-.brand-main h2 {
-  margin-top: 16px;
-  color: #162844;
-  font-size: clamp(30px, 2.8vw, 44px);
-  font-weight: 950;
-  line-height: 1.08;
-}
-
-.brand-main p {
-  margin-top: 18px;
-  color: #40506d;
-  font-size: clamp(15px, 1.1vw, 18px);
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-.portal-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 26px;
-  margin-top: 34px;
-}
-
-.portal-card {
-  display: grid;
-  grid-template-columns: 58px 1fr;
+.stage-logo {
+  display: flex;
   align-items: center;
-  min-height: 132px;
-  padding: 24px;
-  text-align: left;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(119, 143, 255, 0.28);
-  border-radius: 22px;
-  box-shadow: 0 18px 40px rgba(64, 104, 180, 0.07);
-  cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  gap: var(--space-2);
+  margin-bottom: var(--space-10);
 }
 
-.portal-card:hover {
-  border-color: rgba(35, 102, 255, 0.42);
-  box-shadow: 0 22px 48px rgba(35, 102, 255, 0.12);
-  transform: translateY(-2px);
-}
-
-.portal-card.teacher {
-  border-color: rgba(32, 191, 136, 0.28);
-  background: rgba(244, 255, 250, 0.5);
-}
-
-.portal-icon {
-  display: grid;
-  width: 50px;
-  height: 50px;
-  color: #fff;
-  place-items: center;
-  background: linear-gradient(135deg, #5757ff, #271cff);
-  border-radius: 16px;
-  font-size: 30px;
-  box-shadow: 0 18px 34px rgba(56, 76, 255, 0.2);
-}
-
-.portal-card.teacher .portal-icon {
-  background: linear-gradient(135deg, #62dfa7, #09ba6b);
-  box-shadow: 0 18px 34px rgba(9, 186, 107, 0.18);
-}
-
-.portal-copy strong,
-.portal-copy small {
-  display: block;
-}
-
-.portal-copy strong {
-  color: #1c38ff;
-  font-size: 22px;
-  font-weight: 900;
-}
-
-.portal-card.teacher .portal-copy strong {
-  color: #07b76d;
-}
-
-.portal-copy small {
-  margin-top: 10px;
-  color: #253653;
-  font-size: 15px;
+.stage-brand {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   font-weight: 700;
+  color: var(--neutral-800);
 }
 
-.portal-arrow {
-  display: grid;
-  grid-column: 2;
-  width: 34px;
-  height: 34px;
-  margin-top: 14px;
-  color: #6058ff;
-  place-items: center;
-  border: 2px solid rgba(96, 88, 255, 0.36);
-  border-radius: 50%;
-  font-size: 18px;
+.stage-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  color: var(--neutral-900);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-4);
 }
 
-.portal-card.teacher .portal-arrow {
-  color: #09ba6b;
-  border-color: rgba(9, 186, 107, 0.34);
+.title-accent {
+  color: var(--accent-600);
 }
 
-.hero-image {
-  position: absolute;
-  right: -6%;
-  bottom: 0;
-  z-index: 1;
-  width: min(88%, 960px);
-  max-height: 47%;
-  object-fit: cover;
-  object-position: center bottom;
-  border-top-left-radius: 34px;
-  filter: saturate(1.03);
-  mask-image: linear-gradient(90deg, transparent 0%, #000 9%, #000 100%);
+.stage-desc {
+  font-size: var(--text-base);
+  color: var(--neutral-500);
+  line-height: 1.7;
+  margin-bottom: var(--space-10);
+  max-width: 380px;
 }
 
-.login-panel {
+/* === Interactive Scene === */
+.scene {
   position: relative;
+  height: 280px;
+  margin-top: var(--space-4);
+}
+
+/* AI Orb */
+.ai-orb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 80px;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.orb-core {
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-500), var(--accent-400));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  z-index: 2;
+  transition: all 0.4s var(--ease-spring);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);
+}
+
+.ai-orb.active .orb-core {
+  transform: scale(1.15);
+  box-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
+}
+
+.orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(16, 185, 129, 0.15);
+  animation: orb-spin 8s linear infinite;
+}
+
+.orb-ring-1 { animation-duration: 8s; }
+.orb-ring-2 { inset: -10px; animation-duration: 12s; animation-direction: reverse; border-color: rgba(16, 185, 129, 0.08); }
+.orb-ring-3 { inset: -20px; animation-duration: 16s; border-color: rgba(16, 185, 129, 0.04); }
+
+.ai-orb.active .orb-ring {
+  border-color: rgba(16, 185, 129, 0.3);
+  animation-duration: 3s;
+}
+
+@keyframes orb-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.orb-label {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-600);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.ai-orb.active .orb-label { opacity: 1; }
+
+/* Question Bubbles */
+.q-bubble {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-elevated);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  color: var(--neutral-600);
+  cursor: pointer;
+  animation: bubble-float 4s ease-in-out infinite;
+  animation-delay: var(--delay);
+  transition: all 0.3s var(--ease-spring);
+  z-index: 3;
+  box-shadow: var(--shadow-sm);
+}
+
+.q-bubble:hover {
+  transform: scale(1.08);
+  border-color: var(--accent-300);
+  color: var(--accent-700);
+  box-shadow: var(--shadow-accent);
+}
+
+.q-bubble.popped {
+  transform: scale(0);
+  opacity: 0;
+  border-color: var(--accent-400);
+}
+
+.q-ripple {
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid var(--accent-400);
+  animation: ripple-out 0.6s ease-out forwards;
+}
+
+@keyframes ripple-out {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(2); opacity: 0; }
+}
+
+@keyframes bubble-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.q-bubble:hover {
+  animation-play-state: paused;
+}
+
+/* Score Meter */
+.score-meter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-3);
+  background: var(--surface-elevated);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  transition: all 0.3s var(--ease-out-expo);
+  z-index: 4;
+  cursor: pointer;
+}
+
+.score-meter:hover {
+  border-color: var(--accent-300);
+  box-shadow: var(--shadow-accent);
+}
+
+.meter-track {
+  height: 6px;
+  background: var(--neutral-100);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+}
+
+.meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-400), var(--accent-500));
+  border-radius: 3px;
+  transition: width 0.5s var(--ease-out-expo);
+}
+
+.meter-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.meter-icon {
+  color: var(--accent-500);
+  display: flex;
+}
+
+.meter-val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-600);
+  min-width: 20px;
+}
+
+.meter-hint {
+  color: var(--neutral-400);
+  margin-left: auto;
+}
+
+/* === Form Panel (Right) === */
+.form-panel {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.form-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(20px);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--neutral-400);
+  text-decoration: none;
+  margin-bottom: var(--space-6);
+  transition: color var(--duration-fast);
+}
+.back-link:hover { color: var(--accent-600); }
+
+.form-header { margin-bottom: var(--space-6); }
+
+.form-title {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--neutral-900);
+  margin-bottom: var(--space-1);
+}
+
+.form-sub {
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+}
+
+/* Role Tabs */
+.role-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  background: var(--neutral-100);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+}
+
+.role-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--neutral-500);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out-expo);
+}
+.role-tab:hover { color: var(--neutral-700); }
+.role-tab.active {
+  background: var(--surface-elevated);
+  color: var(--accent-700);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Form Fields */
+.login-form {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  min-height: 100dvh;
-  padding: 76px 68px 36px;
-  background:
-    radial-gradient(circle at 14% 4%, rgba(68, 136, 255, 0.1), transparent 22rem),
-    linear-gradient(180deg, #f8fbff 0%, #f1f6ff 100%);
+  gap: var(--space-4);
 }
 
-.help-link {
-  position: absolute;
-  top: 36px;
-  right: 46px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: #31415d;
-  font-size: 15px;
-  font-weight: 600;
+.field-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--neutral-700);
+  margin-bottom: var(--space-2);
 }
 
-.auth-card {
-  width: min(100%, 560px);
-  margin: 0 auto;
-  padding: 40px 38px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(226, 233, 246, 0.9);
-  border-radius: 18px;
-  box-shadow: 0 28px 70px rgba(53, 83, 139, 0.12);
-}
-
-.role-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  border-bottom: 1px solid #dce5f2;
-}
-
-.role-tabs button {
+.field-input {
   position: relative;
-  height: 48px;
-  color: #223553;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.role-tabs button.active {
-  color: #1769ff;
-}
-
-.role-tabs button.active::after {
-  position: absolute;
-  right: 25%;
-  bottom: -2px;
-  left: 25%;
-  height: 5px;
-  content: '';
-  background: #1769ff;
-  border-radius: 999px;
-}
-
-.auth-form {
-  margin-top: 34px;
-}
-
-.auth-form :deep(.el-form-item) {
-  margin-bottom: 18px;
-}
-
-.auth-input :deep(.el-input__wrapper) {
-  min-height: 58px;
-  padding-inline: 18px;
-  border-radius: 14px;
-  box-shadow: 0 0 0 1px #cfd9e8 inset;
-}
-
-.auth-input :deep(.el-input__inner) {
-  color: #142540;
-  font-size: 16px;
-}
-
-.auth-input :deep(.el-input__prefix) {
-  color: #8290aa;
-  font-size: 21px;
-}
-
-.password-toggle {
-  display: grid;
-  color: #8b98af;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  place-items: center;
-  font-size: 22px;
-}
-
-.form-options {
   display: flex;
   align-items: center;
+}
+
+.field-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--neutral-400);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.field-input input {
+  width: 100%;
+  padding: 12px 14px 12px 42px;
+  border: 1.5px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  color: var(--neutral-800);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  outline: none;
+  transition: all var(--duration-normal) var(--ease-out-expo);
+}
+.field-input input::placeholder { color: var(--neutral-400); }
+.field-input input:focus {
+  border-color: var(--accent-400);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.pwd-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--neutral-400);
+  cursor: pointer;
+  padding: 4px;
+  transition: color var(--duration-fast);
+}
+.pwd-toggle:hover { color: var(--accent-600); }
+
+/* Form Row */
+.form-row {
+  display: flex;
   justify-content: space-between;
-  margin: 2px 0 24px;
-  color: #31415d;
-  font-size: 15px;
+  align-items: center;
+  font-size: var(--text-sm);
 }
 
-.form-options a {
-  color: #31415d;
-  font-weight: 600;
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--neutral-600);
+  cursor: pointer;
+}
+.checkbox-label input { display: none; }
+
+.cb-box {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--neutral-300);
+  border-radius: 4px;
+  transition: all var(--duration-fast);
+  position: relative;
+  flex-shrink: 0;
+}
+.checkbox-label input:checked + .cb-box {
+  background: var(--accent-500);
+  border-color: var(--accent-500);
+}
+.checkbox-label input:checked + .cb-box::after {
+  content: '';
+  position: absolute;
+  left: 4px; top: 1px;
+  width: 5px; height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
+.forgot {
+  color: var(--accent-600);
+  text-decoration: none;
+  font-weight: 500;
+}
+.forgot:hover { color: var(--accent-700); }
+
+.error-msg {
+  padding: var(--space-3);
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Submit Button */
 .submit-btn {
   width: 100%;
-  height: 64px;
-  border: 0;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #2d80ff 0%, #0666f8 100%);
-  box-shadow: 0 18px 30px rgba(11, 104, 248, 0.28);
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-
-.register-line {
-  margin-top: 24px;
-  color: #52617a;
-  text-align: center;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.register-line button {
-  color: #0666f8;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: inherit;
-  font-weight: 900;
-}
-
-.login-footer {
-  width: min(100%, 560px);
-  margin: 46px auto 0;
-  color: #697895;
-  text-align: center;
-}
-
-.trust-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  margin-bottom: 22px;
-}
-
-.trust-row span {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  color: #4d5d79;
-  font-size: 14px;
+  gap: var(--space-2);
+  padding: 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-500);
+  color: white;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
   font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out-expo);
+  margin-top: var(--space-2);
+}
+.submit-btn:hover {
+  background: var(--accent-600);
+  box-shadow: var(--shadow-accent-lg);
+  transform: translateY(-2px);
+}
+.submit-btn:active {
+  transform: scale(0.98);
+}
+.submit-btn svg {
+  transition: transform 0.3s var(--ease-spring);
+}
+.submit-btn:hover svg {
+  transform: translateX(4px);
 }
 
-.trust-row .el-icon {
-  font-size: 24px;
+.form-foot {
+  text-align: center;
+  margin-top: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
 }
-
-.login-footer p {
-  font-size: 14px;
+.reg-link {
+  color: var(--accent-600);
+  font-weight: 600;
+  margin-left: 4px;
+  text-decoration: none;
 }
+.reg-link:hover { color: var(--accent-700); }
 
-@media (max-width: 1040px) {
-  .login-page {
-    grid-template-columns: 1fr;
-    overflow-y: auto;
-  }
-
-  .login-brand {
-    min-height: 560px;
-    padding: 28px 44px 0;
-  }
-
-  .login-panel {
-    min-height: auto;
-    padding: 56px 32px 34px;
-  }
-}
-
+/* === Responsive === */
 @media (max-width: 900px) {
-  .login-brand {
-    display: none;
+  .login-page {
+    flex-direction: column;
   }
-
-  .login-panel {
-    justify-content: flex-start;
-    min-height: 100dvh;
-    padding: 22px 14px 28px;
+  .stage-panel {
+    flex: 0 0 auto;
+    padding: var(--space-8) var(--space-6) var(--space-4);
   }
-
-  .help-link {
-    position: static;
-    justify-content: flex-end;
-    margin-bottom: 14px;
-    font-size: 14px;
+  .stage-title {
+    font-size: var(--text-2xl);
   }
-
-  .auth-card {
-    padding: 22px 16px;
-    border-radius: 12px;
-  }
-
-  .auth-form {
-    margin-top: 24px;
-  }
-
-  .trust-row {
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-
-  .role-tabs button {
-    height: 44px;
-    font-size: 14px;
-  }
-
-  .auth-input :deep(.el-input__wrapper),
-  .submit-btn {
-    min-height: auto;
-    height: 50px;
-  }
-
-  .login-footer {
-    margin-top: 24px;
-  }
-
-  .form-options,
-  .register-line,
-  .login-footer p,
-  .trust-row span {
-    font-size: 14px;
+  .scene { height: 200px; }
+  .q-bubble { font-size: 11px; padding: 4px 10px; }
+  .form-panel { padding: var(--space-4) var(--space-6) var(--space-8); }
+  .form-card {
+    padding: var(--space-6);
+    box-shadow: none;
+    border: 1px solid var(--neutral-200);
   }
 }
 
-@media (max-width: 560px) {
-  .trust-row {
-    grid-template-columns: 1fr;
-  }
-
-  .form-options {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .orb-ring, .q-bubble { animation: none; }
+  .bg-glow { display: none; }
+  .q-ripple { animation: none; }
 }
 </style>

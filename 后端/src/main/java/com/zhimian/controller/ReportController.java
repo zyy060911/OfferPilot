@@ -73,7 +73,7 @@ public class ReportController {
 
             String contentType = "pdf".equals(format)
                     ? "application/pdf"
-                    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    : "application/msword";
 
             response.setContentType(contentType);
             response.setCharacterEncoding("UTF-8");

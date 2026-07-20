@@ -148,6 +148,13 @@ public class ReportService {
 
     // ============================ 报告查询 ============================
 
+    public InterviewReport getReportBySession(Long sessionId) {
+        return reportMapper.selectOne(
+                new LambdaQueryWrapper<InterviewReport>()
+                        .eq(InterviewReport::getSessionId, sessionId)
+                        .last("LIMIT 1"));
+    }
+
     public ReportDetailResponse getDetail(Long reportId) {
         InterviewReport report = reportMapper.selectById(reportId);
         if (report == null) {

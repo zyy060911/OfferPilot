@@ -1,67 +1,51 @@
-import request from '@/utils/request'
-import downloadRequest from '@/utils/download'
+import request from '../utils/request'
+import downloadRequest from '../utils/download'
 
+/* ==================== Auth ==================== */
 export const login = (data) => request.post('/auth/login', data)
-
 export const register = (data) => request.post('/auth/register', data)
 
+/* ==================== User ==================== */
 export const getMe = () => request.get('/user/me')
-
-export const getJobList = () => request.get('/job/list')
-
-export const getJobDetail = (id) => request.get(`/job/${id}`)
-
-export const saveResume = (data) => request.post('/resume', data)
-
-export const getMyResume = () => request.get('/resume/mine')
-
-/** 当前用户训练统计 */
 export const getMyStats = () => request.get('/user/stats')
-
-/** 修改个人资料（昵称/密码） */
 export const updateProfile = (data) => request.put('/user/profile', data)
 
-/** 面试记录列表 */
-export const getInterviewRecords = () => request.get('/interview/records')
+/* ==================== Jobs ==================== */
+export const getJobList = () => request.get('/job/list')
+export const getJobDetail = (id) => request.get(`/job/${id}`)
 
-/** 开始面试：{ jobId, difficulty, durationSeconds } → { sessionId, jobName, question } */
-export const startInterview = (data) => request.post('/interview/start', data)
-
-/** 提交回答：{ questionId, answer } → { nextAction, followupQuestion } */
-export const submitAnswer = (sessionId, data) => request.post(`/interview/${sessionId}/answer`, data)
-
-/** 获取下一题 → { nextAction, question } */
-export const getNextQuestion = (sessionId) => request.get(`/interview/${sessionId}/next`)
-
-/** 结束面试 → reportId（用于跳转报告页） */
-export const finishInterview = (sessionId) => request.post(`/interview/${sessionId}/finish`)
-
-/** 获取某个面试会话的全部问答消息 */
-export const getSessionMessages = (sessionId) => request.get(`/interview/${sessionId}/messages`)
-
-/** 上传简历文件(PDF/DOC/DOCX)，返回提取后的个人画像 */
+/* ==================== Resume ==================== */
+export const saveResume = (data) => request.post('/resume', data)
+export const getMyResume = () => request.get('/resume/mine')
 export const uploadResumeFile = (file) => {
   const formData = new FormData()
   formData.append('file', file)
   return request.post('/resume/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
-
-/** 获取从文件上传提取的个人画像 */
 export const getResumeFileProfile = () => request.get('/resume/file-profile')
 
-/** 能力报告详情 → { reportId, jobName, totalScore, summary, strengths, weaknesses, suggestions, weakTags, dimensions } */
-export const getReportDetail = (reportId) => request.get(`/report/${reportId}`)
+/* ==================== Interview ==================== */
+export const getInterviewRecords = () => request.get('/interview/records')
+export const startInterview = (data) => request.post('/interview/start', data)
+export const submitAnswer = (sessionId, data) => request.post(`/interview/${sessionId}/answer`, data)
+export const getNextQuestion = (sessionId) => request.get(`/interview/${sessionId}/next`)
+export const finishInterview = (sessionId) => request.post(`/interview/${sessionId}/finish`)
+export const getSessionMessages = (sessionId) => request.get(`/interview/${sessionId}/messages`)
+export const submitFollowUp = (data) => request.post('/interview/follow-up', data)
 
-/**
- * 导出报告为 PDF 或 Word 文件（返回 Blob，由调用方触发浏览器下载）。
- * @param {number} reportId
- * @param {'pdf'|'docx'} format
- * @returns {Promise<Blob>}
- */
+/* ==================== Follow-up Records ==================== */
+export const getFollowUpRecords = (params) => request.get('/interview/follow-up-records', { params })
+export const getFollowUpStats = () => request.get('/interview/follow-up-records/stats')
+
+/* ==================== Reports ==================== */
+export const getReportDetail = (reportId) => request.get(`/report/${reportId}`)
 export const exportReport = (reportId, format = 'pdf') =>
   downloadRequest.get(`/report/${reportId}/export`, {
     params: { format },
-    responseType: 'blob'
+    responseType: 'blob',
   })
+
+/* ==================== Teacher ==================== */
+export const getTeacherOverview = () => request.get('/teacher/dashboard/overview')

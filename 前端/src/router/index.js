@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// 统一读取并归一化角色，避免大小写/空白导致的角色判断失效
 function currentRole() {
   return (localStorage.getItem('role') || '').trim().toUpperCase()
 }
@@ -10,102 +9,68 @@ function isTeacherLike(role) {
 }
 
 const routes = [
-  {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/Login.vue'),
-    meta: { public: true }
-  },
-  {
-    path: '/',
-    component: () => import('@/layout/MainLayout.vue'),
-    // 根路径按角色落地：教师/管理员 → 教师端总览，其余 → 学生端首页。
-    // 这是一道安全网：任何进入 "/" 的导航（含登录后竞态/刷新）都不会把教师塞回学生首页。
-    redirect: () => (isTeacherLike(currentRole()) ? '/teacher/dashboard' : '/home'),
-    children: [
-      {
-        path: 'home',
-        name: 'Dashboard',
-        component: () => import('@/views/Dashboard.vue'),
-        meta: { title: '首页' }
-      },
-      {
-        path: 'jobs',
-        name: 'JobSelect',
-        component: () => import('@/views/JobSelect.vue'),
-        meta: { title: '面试准备' }
-      },
-      {
-        path: 'resume',
-        name: 'Resume',
-        component: () => import('@/views/Resume.vue'),
-        meta: { title: '简历画像' }
-      },
-      {
-        path: 'interview',
-        name: 'Interview',
-        component: () => import('@/views/Interview.vue'),
-        meta: { title: '模拟面试' }
-      },
-      {
-        path: 'history',
-        name: 'History',
-        component: () => import('@/views/History.vue'),
-        meta: { title: '面试记录' }
-      },
-      {
-        path: 'report',
-        name: 'Report',
-        component: () => import('@/views/Report.vue'),
-        meta: { title: '能力报告' }
-      },
-      {
-        path: 'followup-records',
-        name: 'FollowupRecords',
-        component: () => import('@/views/FollowupRecords.vue'),
-        meta: { title: '追问记录' }
-      },
-      {
-        path: 'profile',
-        name: 'Profile',
-        component: () => import('@/views/Profile.vue'),
-        meta: { title: '个人中心' }
-      },
-      {
-        path: 'teacher/dashboard',
-        name: 'TeacherDashboard',
-        component: () => import('@/views/TeacherDashboard.vue'),
-        // 仅 TEACHER / ADMIN 可访问，由下方 beforeEach 守卫校验
-        meta: { title: '教师端总览', roles: ['TEACHER', 'ADMIN'] }
-      }
-    ]
-  }
+  // Public
+  { path: '/', name: 'Landing', component: () => import('../views/Landing.vue'), meta: { public: true } },
+  { path: '/login', name: 'Login', component: () => import('../views/Login.vue'), meta: { public: true } },
+  { path: '/register', name: 'Register', component: () => import('../views/Register.vue'), meta: { public: true } },
+  { path: '/forgot-password', name: 'ForgotPassword', component: () => import('../views/ForgotPassword.vue'), meta: { public: true } },
+
+  // Student portal
+  { path: '/home', name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
+  { path: '/jobs', name: 'JobSelect', component: () => import('../views/JobSelect.vue') },
+  { path: '/resume', name: 'Resume', component: () => import('../views/JobSelect.vue') },
+  { path: '/interview', name: 'Interview', component: () => import('../views/Interview.vue') },
+  { path: '/history', name: 'History', component: () => import('../views/History.vue') },
+  { path: '/history/:id', name: 'HistoryDetail', component: () => import('../views/HistoryDetail.vue') },
+  { path: '/report', name: 'Report', component: () => import('../views/HistoryDetail.vue') },
+  { path: '/followup-records', name: 'FollowupRecords', component: () => import('../views/History.vue') },
+  { path: '/profile', name: 'Profile', component: () => import('../views/Profile.vue') },
+  { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue') },
+  { path: '/member', name: 'MemberCenter', component: () => import('../views/MemberCenter.vue') },
+
+  // Teacher portal
+  { path: '/teacher/dashboard', name: 'TeacherDashboard', component: () => import('../views/teacher/TeacherOverview.vue'), meta: { roles: ['TEACHER', 'ADMIN'] } },
+  { path: '/teacher/class', name: 'TeacherClass', component: () => import('../views/teacher/TeacherClass.vue'), meta: { roles: ['TEACHER', 'ADMIN'] } },
+  { path: '/teacher/students/:id', name: 'TeacherStudent', component: () => import('../views/teacher/TeacherStudent.vue'), meta: { roles: ['TEACHER', 'ADMIN'] } },
+  { path: '/teacher/tasks', name: 'TeacherTask', component: () => import('../views/teacher/TeacherTask.vue'), meta: { roles: ['TEACHER', 'ADMIN'] } },
+  { path: '/teacher/reports', name: 'TeacherReport', component: () => import('../views/teacher/TeacherReport.vue'), meta: { roles: ['TEACHER', 'ADMIN'] } },
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
 })
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
+
   if (to.meta.public) {
+    // Redirect logged-in users away from login/register
+    if (token && (to.name === 'Login' || to.name === 'Register' || to.name === 'ForgotPassword')) {
+      const role = currentRole()
+      next(isTeacherLike(role) ? '/teacher/dashboard' : '/home')
+      return
+    }
     next()
-  } else if (!token) {
+    return
+  }
+
+  if (!token) {
     next('/login')
-  } else if (to.meta.roles) {
-    // 页面刷新后 Pinia 状态会重置，故从 localStorage 读取角色，保证守卫可靠。
-    // 归一化大小写，避免后端/种子数据返回小写时角色校验失败。
+    return
+  }
+
+  if (to.meta.roles) {
     const role = currentRole()
     if (to.meta.roles.includes(role)) {
       next()
     } else {
-      // 学生等无权限角色访问教师端 → 拦回学生端首页
       next('/home')
     }
-  } else {
-    next()
+    return
   }
+
+  next()
 })
 
 export default router
