@@ -7,7 +7,6 @@
 *.log
 后端/run.log
 后端/run.err.log
-# 生产滚动日志目录（logback-spring.xml prod profile 输出）
 后端/logs/
 
 # ===== Node / Vite (前端) =====
@@ -15,9 +14,8 @@ node_modules/
 前端/dist/
 前端/dev.log
 前端/dev.err.log
-前端/qa-dev.log
 
-# npm 缓存（.npmrc 把缓存指向了项目内目录，避免提交进仓库）
+# npm 缓存
 .npm-cache/
 
 # ===== 本地配置 / IDE =====

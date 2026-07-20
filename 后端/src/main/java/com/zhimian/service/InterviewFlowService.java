@@ -12,15 +12,19 @@ import com.zhimian.dto.QuestionView;
 import com.zhimian.dto.StartInterviewRequest;
 import com.zhimian.entity.InterviewFollowupRecord;
 import com.zhimian.entity.InterviewMessage;
+import com.zhimian.entity.InterviewReport;
 import com.zhimian.entity.InterviewSession;
 import com.zhimian.entity.JobPosition;
+import com.zhimian.entity.ReportDimension;
 import com.zhimian.entity.Resume;
 import com.zhimian.entity.SkillQuestion;
 import com.zhimian.entity.SkillQuestionTagRel;
 import com.zhimian.entity.SkillTag;
 import com.zhimian.mapper.InterviewMessageMapper;
+import com.zhimian.mapper.InterviewReportMapper;
 import com.zhimian.mapper.InterviewSessionMapper;
 import com.zhimian.mapper.JobPositionMapper;
+import com.zhimian.mapper.ReportDimensionMapper;
 import com.zhimian.mapper.SkillQuestionMapper;
 import com.zhimian.mapper.SkillQuestionTagRelMapper;
 import com.zhimian.mapper.SkillTagMapper;
@@ -55,6 +59,8 @@ public class InterviewFlowService {
     private final FollowUpService followUpService;
     private final InterviewFollowupRecordService followupRecordService;
     private final ExperienceQuestionService experienceQuestionService;
+    private final InterviewReportMapper reportMapper;
+    private final ReportDimensionMapper dimensionMapper;
 
     // 新标签化题库
     private final SkillQuestionMapper skillQuestionMapper;
@@ -257,6 +263,28 @@ public class InterviewFlowService {
             sessionMapper.updateById(session);
         }
         return reportService.generateForSession(session);
+    }
+
+    /** 删除面试会话及其关联数据（消息+报告+维度+追问记录），仅允许操作本人会话 */
+    public void delete(Long sessionId) {
+        InterviewSession session = sessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BizException("会话不存在");
+        }
+        if (!session.getUserId().equals(UserContext.getUserId())) {
+            throw new BizException("无权操作该会话");
+        }
+        // 删除关联的报告（含维度）、追问记录、消息
+        InterviewReport report = reportService.getReportBySession(sessionId);
+        if (report != null) {
+            dimensionMapper.delete(new LambdaQueryWrapper<ReportDimension>()
+                    .eq(ReportDimension::getReportId, report.getId()));
+            reportMapper.deleteById(report.getId());
+        }
+        followupRecordService.deleteBySession(sessionId);
+        messageMapper.delete(new LambdaQueryWrapper<InterviewMessage>()
+                .eq(InterviewMessage::getSessionId, sessionId));
+        sessionMapper.deleteById(sessionId);
     }
 
     // ============================ 标签化出题 ============================

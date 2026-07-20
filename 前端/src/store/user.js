@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import { login as loginApi, register as registerApi } from '@/api'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -7,29 +6,28 @@ export const useUserStore = defineStore('user', {
     userId: Number(localStorage.getItem('userId')) || null,
     username: localStorage.getItem('username') || '',
     nickname: localStorage.getItem('nickname') || '',
-    role: localStorage.getItem('role') || ''
+    role: localStorage.getItem('role') || '',
   }),
+
   getters: {
-    isLogin: (state) => !!state.token
+    isLogin: (state) => !!state.token,
+    isTeacher: (state) => state.role === 'TEACHER' || state.role === 'ADMIN',
   },
+
   actions: {
-    async login(form) {
-      const data = await loginApi(form)
+    setAuth(data) {
       this.token = data.token
       this.userId = data.userId
       this.username = data.username
-      this.nickname = data.nickname
+      this.nickname = data.nickname || ''
       this.role = data.role
       localStorage.setItem('token', data.token)
       localStorage.setItem('userId', data.userId)
       localStorage.setItem('username', data.username)
       localStorage.setItem('nickname', data.nickname || '')
       localStorage.setItem('role', data.role)
-      return data
     },
-    async register(form) {
-      return registerApi(form)
-    },
+
     logout() {
       this.token = ''
       this.userId = null
@@ -37,6 +35,6 @@ export const useUserStore = defineStore('user', {
       this.nickname = ''
       this.role = ''
       localStorage.clear()
-    }
-  }
+    },
+  },
 })
