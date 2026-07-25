@@ -27,3 +27,19 @@ node_modules/
 # ===== 系统文件 =====
 .DS_Store
 Thumbs.db
+
+# ===== 数字人本地运行产物 =====
+数字人/envs/
+数字人/.venv/
+数字人/__pycache__/
+数字人/**/__pycache__/
+数字人/logs/
+数字人/*.log
+数字人/tmp*/
+数字人/trial*/
+数字人/data/record.mp4
+数字人/data/**
+!数字人/data/avatars/
+!数字人/data/avatars/.gitkeep
+数字人/models/**
+!数字人/models/put models here.txt

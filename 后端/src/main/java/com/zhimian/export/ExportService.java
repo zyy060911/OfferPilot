@@ -1,20 +1,26 @@
 package com.zhimian.export;
 
-import com.documents4j.api.DocumentType;
-import com.documents4j.api.IConverter;
 import com.zhimian.common.BizException;
 import com.zhimian.dto.ReportDetailResponse;
 import com.zhimian.dto.ReportDimensionView;
 import com.zhimian.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -30,7 +36,6 @@ import java.util.List;
 public class ExportService {
 
     private final ReportService reportService;
-    private final IConverter converter;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -47,16 +52,211 @@ public class ExportService {
         // 1. 获取报告数据（含归属校验）
         ReportDetailResponse report = reportService.getDetail(reportId);
 
-        // 2. 渲染 HTML
-        String html = renderHtml(report);
+        // 使用 Java 原生库生成文件，避免依赖桌面 Word 自动化进程。
+        return "pdf".equals(format) ? exportPdf(report) : exportDocx(report);
+    }
 
-        // 3. PDF / DOCX: 写入临时 HTML 文件后通过 documents4j 转换为目标格式
-        File htmlFile = writeTempHtml(reportId, html);
-        try {
-            return convertHtml(htmlFile, format);
-        } finally {
-            if (!htmlFile.delete()) {
-                htmlFile.deleteOnExit();
+    private byte[] exportPdf(ReportDetailResponse report) {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDType0Font font = PDType0Font.load(document, findCjkFont());
+            try (PdfWriter writer = new PdfWriter(document, font)) {
+                writer.write("面试能力评估报告", 22, 30);
+                writer.write("岗位：" + safe(report.getJobName())
+                        + "    报告编号：" + report.getReportId()
+                        + "    生成时间：" + LocalDateTime.now().format(DATE_FMT), 10, 18);
+                writer.write("综合得分：" + safe(report.getTotalScore()), 18, 26);
+
+                writePdfSection(writer, "一、综合评价",
+                        report.getSummary() == null ? List.of("暂无评价") : List.of(report.getSummary()));
+
+                writer.write("二、五维能力得分", 15, 22);
+                if (report.getDimensions() != null) {
+                    for (ReportDimensionView dimension : report.getDimensions()) {
+                        writer.write("- " + safe(dimension.getDimension())
+                                + "：" + safe(dimension.getScore()) + " 分"
+                                + "（" + safe(dimension.getLevel()) + "）", 11, 17);
+                        if (dimension.getExplanation() != null && !dimension.getExplanation().isBlank()) {
+                            writer.write("  " + dimension.getExplanation(), 10, 16);
+                        }
+                    }
+                }
+
+                writePdfSection(writer, "三、表现优势", report.getStrengths());
+                writePdfSection(writer, "四、待改进项", report.getWeaknesses());
+                writePdfSection(writer, "五、提升建议", report.getSuggestions());
+            }
+            document.save(output);
+            return output.toByteArray();
+        } catch (Exception e) {
+            log.error("PDF 原生导出失败 reportId={}", report.getReportId(), e);
+            throw new ExportException("PDF 生成失败：" + e.getMessage());
+        }
+    }
+
+    private byte[] exportDocx(ReportDetailResponse report) {
+        try (XWPFDocument document = new XWPFDocument();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            addDocxParagraph(document, "面试能力评估报告", 22, true, ParagraphAlignment.CENTER);
+            addDocxParagraph(document,
+                    "岗位：" + safe(report.getJobName())
+                            + "    报告编号：" + report.getReportId()
+                            + "    生成时间：" + LocalDateTime.now().format(DATE_FMT),
+                    10, false, ParagraphAlignment.CENTER);
+            addDocxParagraph(document, "综合得分：" + safe(report.getTotalScore()) + " 分",
+                    18, true, ParagraphAlignment.CENTER);
+
+            addDocxSection(document, "一、综合评价",
+                    report.getSummary() == null ? List.of("暂无评价") : List.of(report.getSummary()));
+
+            addDocxParagraph(document, "二、五维能力得分", 15, true, ParagraphAlignment.LEFT);
+            if (report.getDimensions() != null) {
+                for (ReportDimensionView dimension : report.getDimensions()) {
+                    addDocxParagraph(document,
+                            safe(dimension.getDimension()) + "：" + safe(dimension.getScore())
+                                    + " 分（" + safe(dimension.getLevel()) + "）",
+                            11, true, ParagraphAlignment.LEFT);
+                    if (dimension.getExplanation() != null && !dimension.getExplanation().isBlank()) {
+                        addDocxParagraph(document, dimension.getExplanation(),
+                                10, false, ParagraphAlignment.LEFT);
+                    }
+                }
+            }
+
+            addDocxSection(document, "三、表现优势", report.getStrengths());
+            addDocxSection(document, "四、待改进项", report.getWeaknesses());
+            addDocxSection(document, "五、提升建议", report.getSuggestions());
+
+            document.write(output);
+            return output.toByteArray();
+        } catch (Exception e) {
+            log.error("DOCX 原生导出失败 reportId={}", report.getReportId(), e);
+            throw new ExportException("Word 生成失败：" + e.getMessage());
+        }
+    }
+
+    private static void writePdfSection(PdfWriter writer, String title, List<String> items) throws IOException {
+        writer.write(title, 15, 22);
+        if (items == null || items.isEmpty()) {
+            writer.write("- 暂无", 11, 17);
+            return;
+        }
+        for (String item : items) {
+            writer.write("- " + safe(item), 11, 17);
+        }
+    }
+
+    private static void addDocxSection(XWPFDocument document, String title, List<String> items) {
+        addDocxParagraph(document, title, 15, true, ParagraphAlignment.LEFT);
+        if (items == null || items.isEmpty()) {
+            addDocxParagraph(document, "暂无", 11, false, ParagraphAlignment.LEFT);
+            return;
+        }
+        for (String item : items) {
+            addDocxParagraph(document, "• " + safe(item), 11, false, ParagraphAlignment.LEFT);
+        }
+    }
+
+    private static void addDocxParagraph(XWPFDocument document, String text, int size,
+                                         boolean bold, ParagraphAlignment alignment) {
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setAlignment(alignment);
+        paragraph.setSpacingAfter(120);
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Microsoft YaHei");
+        run.setFontSize(size);
+        run.setBold(bold);
+        run.setText(safe(text));
+    }
+
+    private static File findCjkFont() {
+        String windowsDir = System.getenv("WINDIR");
+        File fontsDir = new File(windowsDir == null ? "C:\\Windows" : windowsDir, "Fonts");
+        for (String name : List.of("simhei.ttf", "NotoSansSC-VF.ttf", "Deng.ttf")) {
+            File font = new File(fontsDir, name);
+            if (font.isFile()) {
+                return font;
+            }
+        }
+        throw new ExportException("未找到可用的中文字体");
+    }
+
+    private static String safe(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static final class PdfWriter implements AutoCloseable {
+        private static final float MARGIN = 48;
+        private static final float WIDTH = PDRectangle.A4.getWidth() - MARGIN * 2;
+
+        private final PDDocument document;
+        private final PDType0Font font;
+        private PDPageContentStream stream;
+        private float y;
+
+        private PdfWriter(PDDocument document, PDType0Font font) throws IOException {
+            this.document = document;
+            this.font = font;
+            newPage();
+        }
+
+        private void write(String text, float size, float leading) throws IOException {
+            String normalized = safe(text).replace("\r", "");
+            for (String paragraph : normalized.split("\n", -1)) {
+                if (paragraph.isEmpty()) {
+                    ensureSpace(leading);
+                    y -= leading;
+                    continue;
+                }
+                StringBuilder line = new StringBuilder();
+                for (int offset = 0; offset < paragraph.length();) {
+                    int codePoint = paragraph.codePointAt(offset);
+                    String character = new String(Character.toChars(codePoint));
+                    String candidate = line + character;
+                    float candidateWidth = font.getStringWidth(candidate) / 1000f * size;
+                    if (candidateWidth > WIDTH && line.length() > 0) {
+                        writeLine(line.toString(), size, leading);
+                        line.setLength(0);
+                    }
+                    line.append(character);
+                    offset += Character.charCount(codePoint);
+                }
+                if (line.length() > 0) {
+                    writeLine(line.toString(), size, leading);
+                }
+            }
+        }
+
+        private void writeLine(String line, float size, float leading) throws IOException {
+            ensureSpace(leading);
+            stream.beginText();
+            stream.setFont(font, size);
+            stream.newLineAtOffset(MARGIN, y);
+            stream.showText(line);
+            stream.endText();
+            y -= leading;
+        }
+
+        private void ensureSpace(float leading) throws IOException {
+            if (y - leading < MARGIN) {
+                newPage();
+            }
+        }
+
+        private void newPage() throws IOException {
+            if (stream != null) {
+                stream.close();
+            }
+            PDPage page = new PDPage(PDRectangle.A4);
+            document.addPage(page);
+            stream = new PDPageContentStream(document, page);
+            y = PDRectangle.A4.getHeight() - MARGIN;
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (stream != null) {
+                stream.close();
             }
         }
     }
@@ -196,63 +396,7 @@ public class ExportService {
         return sb.toString();
     }
 
-    // ---------- 文档转换 ----------
-
-    /**
-     * 调用 documents4j 将 HTML 文件转换为目标格式。
-     */
-    private byte[] convertHtml(File htmlFile, String format) {
-        try {
-            File tmpDir = htmlFile.getParentFile();
-            String ext = "pdf".equals(format) ? ".pdf" : ".docx";
-            File targetFile = File.createTempFile("report-", ext, tmpDir);
-
-            DocumentType targetType = "pdf".equals(format) ? DocumentType.PDF : DocumentType.DOCX;
-
-            boolean ok = converter.convert(htmlFile)
-                    .as(DocumentType.HTML)
-                    .to(targetFile)
-                    .as(targetType)
-                    .execute();
-
-            if (!ok) {
-                throw new ExportException("文档转换失败：documents4j 返回失败状态。" +
-                        "请确认本机已安装 Microsoft Word 2007+ 且未在启动前打开 Word。");
-            }
-
-            byte[] bytes = Files.readAllBytes(targetFile.toPath());
-
-            // 清理临时目标文件
-            if (!targetFile.delete()) {
-                targetFile.deleteOnExit();
-            }
-            return bytes;
-        } catch (ExportException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("文档转换异常 reportId={} format={}", htmlFile.getName(), format, e);
-            throw new ExportException("文档转换失败：" + e.getMessage() +
-                    "。请确认本机已安装 Microsoft Word 2007+。");
-        }
-    }
-
     // ---------- 辅助 ----------
-
-    /** 写入临时 HTML 文件并返回 File 引用 */
-    private File writeTempHtml(Long reportId, String html) {
-        try {
-            File tmpDir = new File(System.getProperty("java.io.tmpdir"), "offerpilot-docs4j");
-            if (!tmpDir.exists()) {
-                tmpDir.mkdirs();
-            }
-            File htmlFile = File.createTempFile("report-" + reportId + "-", ".html", tmpDir);
-            Files.write(htmlFile.toPath(), html.getBytes(StandardCharsets.UTF_8));
-            log.debug("临时 HTML 已写入 {}", htmlFile.getAbsolutePath());
-            return htmlFile;
-        } catch (IOException e) {
-            throw new ExportException("写入临时文件失败：" + e.getMessage());
-        }
-    }
 
     /** HTML 文本转义 */
     static String escape(String text) {

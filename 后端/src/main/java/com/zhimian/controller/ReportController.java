@@ -73,7 +73,7 @@ public class ReportController {
 
             String contentType = "pdf".equals(format)
                     ? "application/pdf"
-                    : "application/msword";
+                    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
             response.setContentType(contentType);
             response.setCharacterEncoding("UTF-8");
@@ -95,7 +95,7 @@ public class ReportController {
             writeJsonError(response, e.getCode(), e.getMessage());
         } catch (Exception e) {
             log.error("报告导出异常 reportId={}", reportId, e);
-            writeJsonError(response, 500, "导出失败，请确认已安装 Microsoft Word 2007+ 且未在启动前打开 Word");
+            writeJsonError(response, 500, "导出失败，请稍后重试");
         }
     }
 

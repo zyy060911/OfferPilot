@@ -35,6 +35,18 @@ export const finishInterview = (sessionId) => request.post(`/interview/${session
 export const getSessionMessages = (sessionId) => request.get(`/interview/${sessionId}/messages`)
 export const submitFollowUp = (data) => request.post('/interview/follow-up', data)
 
+/* ==================== Speech ==================== */
+export const transcribeSpeech = (audioBlob, sessionId, duration) => {
+  const formData = new FormData()
+  formData.append('file', audioBlob, `speech-${Date.now()}.wav`)
+  formData.append('sessionId', String(sessionId))
+  formData.append('duration', String(duration))
+  return request.post('/speech/transcribe', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 65000,
+  })
+}
+
 /* ==================== Follow-up Records ==================== */
 export const getFollowUpRecords = (params) => request.get('/interview/follow-up-records', { params })
 export const getFollowUpStats = () => request.get('/interview/follow-up-records/stats')
