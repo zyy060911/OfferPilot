@@ -99,6 +99,45 @@ CREATE TABLE resume (
 ) ENGINE=InnoDB COMMENT='简历/个人画像表';
 
 -- ---------------------------------------------------------------------
+-- 5.1 文件简历及解析结果（V3）
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS resume_file;
+CREATE TABLE resume_file (
+    id           BIGINT       PRIMARY KEY AUTO_INCREMENT COMMENT '文件ID',
+    user_id      BIGINT       NOT NULL                    COMMENT '用户ID',
+    filename     VARCHAR(255)  NOT NULL                    COMMENT '原始文件名',
+    file_size    BIGINT                                   COMMENT '文件大小(字节)',
+    content_type VARCHAR(100)                             COMMENT 'MIME类型',
+    file_data    LONGBLOB      NOT NULL                    COMMENT '文件内容',
+    create_time  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user (user_id)
+) ENGINE=InnoDB COMMENT='上传的简历文件';
+
+DROP TABLE IF EXISTS resume_paragraph;
+CREATE TABLE resume_paragraph (
+    id             BIGINT       PRIMARY KEY AUTO_INCREMENT COMMENT '段落ID',
+    user_id        BIGINT       NOT NULL                    COMMENT '用户ID',
+    file_id        BIGINT       NOT NULL                    COMMENT '文件ID',
+    seq_no         INT          NOT NULL                    COMMENT '段落顺序',
+    content        TEXT         NOT NULL                    COMMENT '段落内容',
+    paragraph_type VARCHAR(20)  NOT NULL DEFAULT 'GENERAL' COMMENT '段落类型: GENERAL/PROJECT',
+    create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user (user_id),
+    KEY idx_file (file_id)
+) ENGINE=InnoDB COMMENT='简历段落分析结果';
+
+DROP TABLE IF EXISTS resume_skill;
+CREATE TABLE resume_skill (
+    id           BIGINT       PRIMARY KEY AUTO_INCREMENT COMMENT '技能ID',
+    user_id      BIGINT       NOT NULL                    COMMENT '用户ID',
+    file_id      BIGINT       NOT NULL                    COMMENT '文件ID',
+    skill_name   VARCHAR(100) NOT NULL                    COMMENT '技能名称',
+    create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_skill (user_id, skill_name),
+    KEY idx_file (file_id)
+) ENGINE=InnoDB COMMENT='简历技能提取结果';
+
+-- ---------------------------------------------------------------------
 -- 6. 面试会话表（一次完整模拟面试）
 -- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS interview_session;
@@ -111,6 +150,7 @@ CREATE TABLE interview_session (
     status        VARCHAR(20) NOT NULL DEFAULT 'ONGOING' COMMENT '状态: ONGOING/FINISHED/ABORTED',
     is_retrain    TINYINT     NOT NULL DEFAULT 0         COMMENT '是否复训: 0否 1是',
     weak_tags     VARCHAR(255)                           COMMENT '复训针对的薄弱标签',
+    duration_seconds INT      NOT NULL DEFAULT 1800      COMMENT '面试时长(秒)，默认30分钟',
     start_time    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开始时间',
     end_time      DATETIME                               COMMENT '结束时间',
     KEY idx_user (user_id),
@@ -129,6 +169,8 @@ CREATE TABLE interview_message (
     round_no      INT         NOT NULL DEFAULT 1         COMMENT '第几轮',
     role          VARCHAR(20) NOT NULL                   COMMENT '角色: INTERVIEWER面试官 CANDIDATE考生',
     msg_type      VARCHAR(20) NOT NULL DEFAULT 'MAIN'    COMMENT '类型: OPENING开场 MAIN主问 FOLLOWUP追问 ANSWER回答 SUMMARY总结',
+    question_type VARCHAR(20) DEFAULT 'SKILL'            COMMENT '题目类型: SKILL题库 EXPERIENCE体验式',
+    reference_answer TEXT                                COMMENT '参考答案(体验式题目专用，供追问对比)',
     content       TEXT        NOT NULL                   COMMENT '内容',
     ability_tag   VARCHAR(100)                           COMMENT '能力标签',
     create_time   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,

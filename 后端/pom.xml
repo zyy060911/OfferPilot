@@ -77,78 +77,6 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- documents4j: HTML → PDF/DOCX 转换（需本机安装 MS Word 2007+）。
-             依赖 JAR 存放于 libs/，以 system scope 引用，团队成员无需额外构建。 -->
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-api</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-api-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-util-all</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-util-all-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-util-conversion</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-util-conversion-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-transformer-api</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-transformer-api-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-transformer</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-transformer-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-util-transformer-process</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-util-transformer-process-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-transformer-msoffice-base</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-transformer-msoffice-base-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-transformer-msoffice-word</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-transformer-msoffice-word-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-local</artifactId>
-            <version>1.1.14</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/documents4j-local-1.1.14-SNAPSHOT.jar</systemPath>
-        </dependency>
-        <dependency>
-            <groupId>org.zeroturnaround</groupId>
-            <artifactId>zt-exec</artifactId>
-            <version>1.11</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/zt-exec-1.11.jar</systemPath>
-        </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
@@ -172,6 +100,18 @@
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-parsers-standard-package</artifactId>
             <version>2.9.2</version>
+        </dependency>
+
+        <!-- 原生报告导出：不依赖本机 Microsoft Word 进程 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.31</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
         </dependency>
 
         <!-- 测试 -->
@@ -213,8 +153,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <!-- 允许 system scope 的 JAR 打入 fat jar，使团队成员无需单独构建 documents4j -->
-                    <includeSystemScope>true</includeSystemScope>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * DeepSeek 客户端：封装对 OpenAI 兼容 /chat/completions 接口的调用。
+ * OpenAI 兼容大模型客户端：封装 /chat/completions 接口调用。
  * <p>
  * 任何异常（网络 / 超时 / 鉴权失败 / 解析失败 / 空内容）一律返回 null，
  * 由上层决定是否走规则兜底；客户端自身不抛业务异常，保证主流程稳定。
@@ -32,7 +32,7 @@ public class DeepSeekClient {
     }
 
     /**
-     * 调用 DeepSeek 生成文本。
+     * 调用当前配置的 OpenAI 兼容模型生成文本。
      *
      * @return 模型返回的纯文本内容；调用失败或内容为空时返回 null。
      */
@@ -61,13 +61,13 @@ public class DeepSeekClient {
             return extractContent(raw);
         } catch (Exception e) {
             // 失败只记日志并返回 null，触发上层规则兜底
-            log.warn("DeepSeek 调用失败，将使用规则兜底：{}", e.getMessage());
+            log.warn("AI 调用失败，将使用规则兜底：{}", e.getMessage());
             return null;
         }
     }
 
     /**
-     * 调用 DeepSeek 并期望返回 JSON 对象。
+     * 调用当前配置的模型并期望返回 JSON 对象。
      * 解析 choices[0].message.content 中的 JSON，失败返回 null。
      *
      * @return 解析后的 JsonNode；调用失败或返回非 JSON 时返回 null。
@@ -89,7 +89,7 @@ public class DeepSeekClient {
             }
             return objectMapper.readTree(json);
         } catch (Exception e) {
-            log.warn("DeepSeek 返回内容无法解析为 JSON：{}", raw);
+            log.warn("AI 返回内容无法解析为 JSON：{}", raw);
             return null;
         }
     }
@@ -108,7 +108,7 @@ public class DeepSeekClient {
             String text = content.asText().trim();
             return text.isEmpty() ? null : text;
         } catch (Exception e) {
-            log.warn("DeepSeek 响应解析失败：{}", e.getMessage());
+            log.warn("AI 响应解析失败：{}", e.getMessage());
             return null;
         }
     }

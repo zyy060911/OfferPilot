@@ -5,26 +5,26 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * AI 大模型配置，绑定 application.yml 的 ai.* 节点（DeepSeek，OpenAI 兼容接口）。
+ * AI 大模型配置，绑定 application.yml 的 ai.* 节点（OpenAI 兼容接口）。
  * <p>
- * API Key 通过 ${AI_API_KEY:...} 占位符从环境变量或配置读取，不在代码中硬编码。
+ * API Key 通过 ${ZHIPU_API_KEY:...} 占位符从环境变量读取，不在代码中硬编码。
  */
 @Data
 @Component
 @ConfigurationProperties(prefix = "ai")
 public class AiProperties {
 
-    /** 提供方标识，目前为 deepseek */
-    private String provider = "deepseek";
+    /** 提供方标识 */
+    private String provider = "zhipu";
 
     /** 接口基地址（OpenAI 兼容） */
-    private String baseUrl = "https://api.deepseek.com";
+    private String baseUrl = "https://open.bigmodel.cn/api/paas/v4";
 
-    /** API Key：来自环境变量 AI_API_KEY 或配置文件，禁止硬编码 */
+    /** API Key：来自环境变量 ZHIPU_API_KEY，禁止硬编码 */
     private String apiKey;
 
     /** 模型名称 */
-    private String model = "deepseek-chat";
+    private String model = "glm-4.7-flash";
 
     /** 是否启用真实 AI 调用；false 时直接走规则化兜底（无 key 也能演示） */
     private boolean enabled = false;

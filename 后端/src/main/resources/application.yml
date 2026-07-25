@@ -36,17 +36,38 @@ jwt:
   # token 有效期（毫秒），默认 7 天
   expiration: 604800000
 
-# AI 大模型配置（DeepSeek，OpenAI 兼容接口）
+# AI 大模型配置（智谱，OpenAI 兼容接口）
 ai:
-  provider: deepseek
-  base-url: https://api.deepseek.com
-  # API Key 只从环境变量 AI_API_KEY 注入，严禁把真实 key 写进本文件提交到仓库
-  api-key: ${AI_API_KEY:在这里填你的DeepSeek_API_Key}
-  model: deepseek-chat
+  provider: zhipu
+  base-url: ${ZHIPU_LLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+  # 大模型与 ASR 共用智谱密钥，只从环境变量读取。
+  api-key: ${ZHIPU_API_KEY:}
+  model: ${ZHIPU_LLM_MODEL:glm-4.7-flash}
   # 是否启用真实 AI 调用；false 时使用内置规则/模拟（无 key 也能演示）
   enabled: true
   # 调用超时（毫秒），同时作为连接与读取超时
   timeout-ms: 20000
+
+# 智谱 GLM-ASR-2512 文件转写
+asr:
+  base-url: ${ZHIPU_ASR_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+  api-key: ${ZHIPU_API_KEY:}
+  model: ${ZHIPU_ASR_MODEL:glm-asr-2512}
+  timeout-ms: 60000
+  max-file-size: 10485760
+  max-duration-seconds: 30
+
+# 本地数字人服务。开发环境启动 Spring Boot 时自动检查并拉起。
+digital-human:
+  enabled: ${DIGITAL_HUMAN_ENABLED:true}
+  base-url: ${DIGITAL_HUMAN_BASE_URL:http://127.0.0.1:8010}
+  timeout-ms: ${DIGITAL_HUMAN_TIMEOUT_MS:20000}
+  launcher:
+    enabled: ${DIGITAL_HUMAN_LAUNCHER_ENABLED:true}
+    workdir: ${DIGITAL_HUMAN_LAUNCHER_WORKDIR:数字人}
+    script: ${DIGITAL_HUMAN_LAUNCHER_SCRIPT:start_offerpilot_digital_human.bat}
+    startup-wait-ms: ${DIGITAL_HUMAN_STARTUP_WAIT_MS:120000}
+    stop-on-shutdown: ${DIGITAL_HUMAN_STOP_ON_SHUTDOWN:true}
 
 # CORS 允许的前端来源（逗号分隔）。开发默认放行本地 Vite 前端，避免影响本地联调。
 # 生产环境用固定白名单（见 application-prod.yml），不再使用通配符。
