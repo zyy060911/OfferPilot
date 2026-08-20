@@ -16,11 +16,18 @@ class EdgeTTS(BaseTTS):
         text,textevent = msg
         voicename = textevent.get('tts', {}).get('ref_file',self.opt.REF_FILE) #self.opt.REF_FILE #"zh-CN-YunxiaNeural"
         t = time.time()
-        asyncio.new_event_loop().run_until_complete(self.__main(voicename,text))
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(self.__main(voicename,text))
+        except Exception:
+            self.input_stream.seek(0)
+            self.input_stream.truncate()
+            raise
+        finally:
+            loop.close()
         logger.info(f'-------edge tts time:{time.time()-t:.4f}s')
         if self.input_stream.getbuffer().nbytes<=0: #edgetts err
-            logger.error('edgetts err!!!!!')
-            return
+            raise RuntimeError('Edge TTS returned no audio')
         
         self.input_stream.seek(0)
         stream = self.__create_bytes_stream(self.input_stream)
@@ -31,11 +38,15 @@ class EdgeTTS(BaseTTS):
             streamlen -= self.chunk
             if idx==0:
                 eventpoint={'status':'start','text':text}
-            elif streamlen<self.chunk:
-                eventpoint={'status':'end','text':text}
             eventpoint.update(**textevent) #eventpoint={'status':'end','text':text,'msgevent':textevent}
             self.parent.put_audio_frame(stream[idx:idx+self.chunk],eventpoint)
             idx += self.chunk
+        if idx == 0:
+            raise RuntimeError('Edge TTS audio is shorter than one output frame')
+        if self.state == State.RUNNING:
+            eventpoint = {'status': 'end', 'text': text}
+            eventpoint.update(**textevent)
+            self.parent.put_audio_frame(np.zeros(self.chunk, np.float32), eventpoint)
         #if streamlen>0:  #skip last frame(not 20ms)
         #    self.queue.put(stream[idx:])
         self.input_stream.seek(0)
@@ -74,3 +85,4 @@ class EdgeTTS(BaseTTS):
                     pass
         except Exception as e:
             logger.exception('edgetts')
+            raise

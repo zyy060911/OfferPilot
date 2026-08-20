@@ -158,6 +158,16 @@
         let latestSpeech = null;
         let playbackUnlocked = false;
         let pendingPlayback = false;
+        let lifecycleChannel = null;
+        let readyNotified = false;
+        let mediaReadyNotified = false;
+        let remoteAudioTrackReady = false;
+        let remoteVideoFrameReady = false;
+        let activeSpeechId = null;
+        let activeActionRequestId = null;
+        const protocolVersion = 1;
+        const configuredParentOrigin = new URLSearchParams(window.location.search).get('parentOrigin');
+        const parentOrigin = configuredParentOrigin || window.location.origin;
 
         const statusEl = document.getElementById('status');
         const connectBtn = document.getElementById('connectBtn');
@@ -214,6 +224,11 @@
         async function bindRemoteMedia(element, stream) {
             element.srcObject = stream;
 
+            if (element === audioEl) {
+                remoteAudioTrackReady = Boolean(stream?.getAudioTracks?.().length);
+                maybeNotifyMediaReady();
+            }
+
             const started = await tryPlay(element);
             if (!started && element === audioEl) {
                 updateStatus('Click avatar to enable audio', '');
@@ -224,7 +239,58 @@
             if (!window.parent || window.parent === window) {
                 return;
             }
-            window.parent.postMessage({ type, ...extra }, '*');
+            window.parent.postMessage({ type, version: protocolVersion, ...extra }, parentOrigin);
+        }
+
+        function lifecyclePayload(event, extra = {}) {
+            return {
+                speechId: extra.speechId || activeSpeechId,
+                event,
+                timestamp: extra.timestamp || new Date().toISOString(),
+                ...(extra.error ? { error: String(extra.error) } : {})
+            };
+        }
+
+        function forwardLifecycleEvent(payload) {
+            if (!payload || !payload.speechId || !payload.event) return;
+            const suffix = payload.event.replace('speech-', '');
+            if (!['started', 'ended', 'error', 'interrupted'].includes(suffix)) return;
+            notifyParent(`offerpilot.embed.speech.${suffix}`, lifecyclePayload(payload.event, payload));
+            if (payload.speechId === activeSpeechId && ['speech-ended', 'speech-error', 'speech-interrupted'].includes(payload.event)) {
+                activeSpeechId = null;
+                updateStatus(isConnected ? 'Connected' : 'Offline', isConnected ? 'ready' : '');
+            }
+        }
+
+        function maybeNotifyReady() {
+            if (!isConnected || lifecycleChannel?.readyState !== 'open' || readyNotified) return;
+            readyNotified = true;
+            notifyParent('offerpilot.embed.ready', { sessionId });
+            maybeNotifyMediaReady();
+            if (latestSpeech) void speak(latestSpeech);
+        }
+
+        function maybeNotifyMediaReady() {
+            if (
+                !isConnected
+                || lifecycleChannel?.readyState !== 'open'
+                || !remoteAudioTrackReady
+                || !remoteVideoFrameReady
+                || mediaReadyNotified
+            ) return;
+            mediaReadyNotified = true;
+            notifyParent('offerpilot.embed.media.ready', {
+                sessionId,
+                timestamp: new Date().toISOString(),
+                audioTrackReady: true,
+                videoFrameReady: true
+            });
+        }
+
+        function markFirstRemoteVideoFrame() {
+            if (remoteVideoFrameReady || !videoEl.srcObject) return;
+            remoteVideoFrameReady = true;
+            maybeNotifyMediaReady();
         }
 
         function updateStatus(text, tone) {
@@ -232,15 +298,18 @@
             statusEl.className = 'status' + (tone ? ' ' + tone : '');
         }
 
-        async function interruptTalk() {
+        async function interruptTalk(speechId = null) {
             if (!sessionId) {
-                return;
+                throw new Error('Digital human is not connected');
             }
-            await fetch('/interrupt_talk', {
+            const response = await fetch('/interrupt_talk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionid: sessionId })
+                body: JSON.stringify({ sessionid: sessionId, speechId })
             });
+            const result = await response.json();
+            if (!response.ok || result.code !== 0) throw new Error(result.msg || 'Interrupt failed');
+            return result.data || {};
         }
 
         async function closeSession() {
@@ -266,29 +335,92 @@
 
         async function speak(payload) {
             latestSpeech = payload;
-            if (!payload || !payload.text) {
+            if (!payload || !payload.text || !payload.speechId) {
                 return;
             }
-            if (!isConnected) {
+            if (!isConnected || lifecycleChannel?.readyState !== 'open') {
                 updateStatus('Waiting for connect', '');
                 return;
             }
 
-            const response = await fetch('/human', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: payload.text,
-                    type: 'echo',
-                    interrupt: true,
-                    sessionid: sessionId
-                })
-            });
-            const result = await response.json();
-            if (result.code !== 0) {
-                throw new Error(result.msg || 'Speak failed');
+            activeSpeechId = payload.speechId;
+            try {
+                const response = await fetch('/human', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: payload.text,
+                        type: 'echo',
+                        interrupt: true,
+                        sessionid: sessionId,
+                        speechId: payload.speechId
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok || result.code !== 0) {
+                    throw new Error(result.msg || 'Speak failed');
+                }
+                const acceptedSpeechId = result.data?.speechId || payload.speechId;
+                if (acceptedSpeechId !== payload.speechId) {
+                    throw new Error('Speech ID mismatch');
+                }
+                if (latestSpeech?.speechId === payload.speechId) latestSpeech = null;
+                notifyParent('offerpilot.embed.speech.accepted', lifecyclePayload('speech-accepted', {
+                    speechId: payload.speechId
+                }));
+                if (activeSpeechId === payload.speechId) updateStatus('Preparing speech', 'speaking');
+            } catch (error) {
+                if (activeSpeechId === payload.speechId) activeSpeechId = null;
+                notifyParent('offerpilot.embed.speech.error', lifecyclePayload('speech-error', {
+                    speechId: payload.speechId,
+                    error: error?.message || error
+                }));
+                throw error;
             }
-            updateStatus('Speaking', 'speaking');
+        }
+
+        async function setAvatarAction(payload) {
+            if (!payload?.requestId || typeof payload.action !== 'string') return;
+            activeActionRequestId = payload.requestId;
+            try {
+                if (!isConnected) throw new Error('Digital human is not connected');
+                const response = await fetch('/set_audiotype', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionid: sessionId,
+                        action: payload.action,
+                        requestId: payload.requestId
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok || result.code !== 0) throw new Error(result.msg || 'Action change failed');
+                if (activeActionRequestId !== payload.requestId) return;
+                activeActionRequestId = null;
+                const actionResult = result.data || {};
+                notifyParent(
+                    actionResult.applied ? 'offerpilot.embed.action.applied' : 'offerpilot.embed.action.fallback',
+                    {
+                        requestId: payload.requestId,
+                        requestedAction: payload.action,
+                        appliedAction: actionResult.appliedAction || 'NEUTRAL',
+                        applied: Boolean(actionResult.applied),
+                        reason: actionResult.reason || null,
+                        capabilities: actionResult.capabilities || [],
+                        timestamp: new Date().toISOString()
+                    }
+                );
+            } catch (error) {
+                if (activeActionRequestId !== payload.requestId) return;
+                activeActionRequestId = null;
+                notifyParent('offerpilot.embed.action.error', {
+                    requestId: payload.requestId,
+                    requestedAction: payload.action,
+                    appliedAction: 'NEUTRAL',
+                    error: String(error?.message || error),
+                    timestamp: new Date().toISOString()
+                });
+            }
         }
 
         async function negotiate() {
@@ -337,9 +469,28 @@
 
             try {
                 pc = new RTCPeerConnection({ sdpSemantics: 'unified-plan' });
+                lifecycleChannel = pc.createDataChannel('offerpilot.lifecycle', { ordered: true });
+                lifecycleChannel.addEventListener('open', maybeNotifyReady);
+                lifecycleChannel.addEventListener('message', (event) => {
+                    try {
+                        forwardLifecycleEvent(JSON.parse(event.data));
+                    } catch (error) {
+                        console.error('Invalid speech lifecycle event', error);
+                    }
+                });
+                lifecycleChannel.addEventListener('error', () => {
+                    if (activeSpeechId) {
+                        notifyParent('offerpilot.embed.speech.error', lifecyclePayload('speech-error', {
+                            error: '数字人生命周期通道异常'
+                        }));
+                    }
+                });
                 pc.addEventListener('track', (event) => {
                     if (event.track.kind === 'video') {
                         void bindRemoteMedia(videoEl, event.streams[0]);
+                        if (typeof videoEl.requestVideoFrameCallback === 'function') {
+                            videoEl.requestVideoFrameCallback(() => markFirstRemoteVideoFrame());
+                        }
                     } else {
                         void bindRemoteMedia(audioEl, event.streams[0]);
                     }
@@ -359,11 +510,7 @@
                 isConnected = true;
                 connectBtn.textContent = 'Connected';
                 updateStatus('Connected', 'ready');
-                notifyParent('offerpilot.embed.ready', { sessionId });
-
-                if (latestSpeech) {
-                    await speak(latestSpeech);
-                }
+                maybeNotifyReady();
             } catch (error) {
                 console.error(error);
                 updateStatus('Connect failed', 'error');
@@ -375,14 +522,29 @@
         }
 
         function cleanup() {
+            readyNotified = false;
+            mediaReadyNotified = false;
+            remoteAudioTrackReady = false;
+            remoteVideoFrameReady = false;
+            latestSpeech = null;
+            activeSpeechId = null;
+            activeActionRequestId = null;
+            if (lifecycleChannel) {
+                lifecycleChannel.close();
+                lifecycleChannel = null;
+            }
             if (pc) {
                 const currentPc = pc;
                 pc = null;
                 setTimeout(() => currentPc.close(), 0);
             }
+            audioEl.srcObject = null;
+            videoEl.srcObject = null;
         }
 
         connectBtn.addEventListener('click', connect);
+        videoEl.addEventListener('loadeddata', markFirstRemoteVideoFrame);
+        videoEl.addEventListener('canplay', markFirstRemoteVideoFrame);
         unlockBtnEl.addEventListener('click', () => {
             void unlockPlayback();
         });
@@ -398,6 +560,7 @@
         });
 
         window.addEventListener('message', async (event) => {
+            if (event.source !== window.parent || event.origin !== parentOrigin) return;
             const data = event.data || {};
             if (data.type === 'offerpilot.speak' && typeof data.text === 'string') {
                 const text = data.text.trim();
@@ -405,16 +568,33 @@
                     return;
                 }
                 try {
-                    await speak({ key: data.key || '', text });
+                    await speak({ key: data.key || '', speechId: data.speechId, text });
                 } catch (error) {
                     console.error(error);
                     updateStatus('播报失败', 'error');
                 }
             }
 
+            if (data.type === 'offerpilot.action.set' && data.version === protocolVersion) {
+                await setAvatarAction({ action: data.action, requestId: data.requestId });
+            }
+
+            if (data.type === 'offerpilot.speech.interrupt' && data.version === protocolVersion) {
+                if (!data.speechId || data.speechId !== activeSpeechId) return;
+                try {
+                    await interruptTalk(data.speechId);
+                    updateStatus('Stopping speech', 'speaking');
+                } catch (error) {
+                    notifyParent('offerpilot.embed.speech.error', lifecyclePayload('speech-error', {
+                        speechId: data.speechId,
+                        error: error?.message || error
+                    }));
+                }
+            }
+
             if (data.type === 'offerpilot.stop') {
                 try {
-                    await interruptTalk();
+                    await interruptTalk(activeSpeechId);
                     updateStatus(isConnected ? 'Connected' : 'Offline', isConnected ? 'ready' : '');
                 } catch (error) {
                     console.error(error);

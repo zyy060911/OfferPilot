@@ -1,0 +1,309 @@
+{
+  "source": "data/avatars/wav2lip256_avatar1/full_imgs",
+  "frameCount": 349,
+  "resolution": {
+    "width": 544,
+    "height": 960
+  },
+  "fps": 25.0,
+  "durationSeconds": 13.96,
+  "faceBox": {
+    "x": 146,
+    "y": 153,
+    "width": 250,
+    "height": 307
+  },
+  "faceRegionMethod": "proportional-fallback",
+  "firstLastFrameDifference": 0.04344395785274894,
+  "motionThresholds": {
+    "q20": 0.05573423973284662,
+    "q45": 0.08334406380169095,
+    "q70": 0.12470775828696787,
+    "q90": 0.22789725258573892
+  },
+  "classifiedIntervals": [
+    {
+      "classification": "action",
+      "startFrame": 1,
+      "endFrame": 19,
+      "durationSeconds": 0.76,
+      "meanMotion": 0.318285
+    },
+    {
+      "classification": "light",
+      "startFrame": 33,
+      "endFrame": 39,
+      "durationSeconds": 0.28,
+      "meanMotion": 0.120619
+    },
+    {
+      "classification": "light",
+      "startFrame": 51,
+      "endFrame": 55,
+      "durationSeconds": 0.2,
+      "meanMotion": 0.120101
+    },
+    {
+      "classification": "light",
+      "startFrame": 57,
+      "endFrame": 69,
+      "durationSeconds": 0.52,
+      "meanMotion": 0.095779
+    },
+    {
+      "classification": "light",
+      "startFrame": 103,
+      "endFrame": 111,
+      "durationSeconds": 0.36,
+      "meanMotion": 0.08008
+    },
+    {
+      "classification": "low",
+      "startFrame": 112,
+      "endFrame": 120,
+      "durationSeconds": 0.36,
+      "meanMotion": 0.061545
+    },
+    {
+      "classification": "low",
+      "startFrame": 123,
+      "endFrame": 137,
+      "durationSeconds": 0.6,
+      "meanMotion": 0.054177
+    },
+    {
+      "classification": "light",
+      "startFrame": 140,
+      "endFrame": 145,
+      "durationSeconds": 0.24,
+      "meanMotion": 0.10455
+    },
+    {
+      "classification": "light",
+      "startFrame": 157,
+      "endFrame": 161,
+      "durationSeconds": 0.2,
+      "meanMotion": 0.096545
+    },
+    {
+      "classification": "light",
+      "startFrame": 166,
+      "endFrame": 173,
+      "durationSeconds": 0.32,
+      "meanMotion": 0.103886
+    },
+    {
+      "classification": "low",
+      "startFrame": 179,
+      "endFrame": 186,
+      "durationSeconds": 0.32,
+      "meanMotion": 0.059473
+    },
+    {
+      "classification": "light",
+      "startFrame": 187,
+      "endFrame": 202,
+      "durationSeconds": 0.64,
+      "meanMotion": 0.104591
+    },
+    {
+      "classification": "light",
+      "startFrame": 217,
+      "endFrame": 236,
+      "durationSeconds": 0.8,
+      "meanMotion": 0.084685
+    },
+    {
+      "classification": "low",
+      "startFrame": 237,
+      "endFrame": 289,
+      "durationSeconds": 2.12,
+      "meanMotion": 0.040392
+    },
+    {
+      "classification": "light",
+      "startFrame": 298,
+      "endFrame": 303,
+      "durationSeconds": 0.24,
+      "meanMotion": 0.116916
+    },
+    {
+      "classification": "action",
+      "startFrame": 304,
+      "endFrame": 333,
+      "durationSeconds": 1.2,
+      "meanMotion": 0.216983
+    },
+    {
+      "classification": "light",
+      "startFrame": 334,
+      "endFrame": 338,
+      "durationSeconds": 0.2,
+      "meanMotion": 0.111297
+    },
+    {
+      "classification": "action",
+      "startFrame": 339,
+      "endFrame": 348,
+      "durationSeconds": 0.4,
+      "meanMotion": 0.235432
+    }
+  ],
+  "candidates": {
+    "NEUTRAL": [
+      {
+        "category": "NEUTRAL",
+        "start_frame": 240,
+        "end_frame": 289,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.039793112315051254,
+        "p90_motion": 0.052005650338716805,
+        "face_motion": 0.055122681632637976,
+        "upper_body_motion": 0.031006124429404737,
+        "arm_motion": 0.03228013537824154,
+        "mouth_motion": 0.06269305085763335,
+        "seam_difference": 0.007319366741261723,
+        "seam_score": 0.9085079157342285,
+        "score": 0.7526732015217713
+      },
+      {
+        "category": "NEUTRAL",
+        "start_frame": 225,
+        "end_frame": 274,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.053210509829409405,
+        "p90_motion": 0.09202449588198215,
+        "face_motion": 0.08254870489239692,
+        "upper_body_motion": 0.038847948163747786,
+        "arm_motion": 0.034819231815636155,
+        "mouth_motion": 0.09514275627210736,
+        "seam_difference": 0.012012056465009278,
+        "seam_score": 0.8498492941873841,
+        "score": 0.6381730599306826
+      },
+      {
+        "category": "NEUTRAL",
+        "start_frame": 85,
+        "end_frame": 134,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.0675521142784506,
+        "p90_motion": 0.08197717248089612,
+        "face_motion": 0.10046155869960785,
+        "upper_body_motion": 0.05338148437440395,
+        "arm_motion": 0.04700930213555694,
+        "mouth_motion": 0.10569317793473601,
+        "seam_difference": 0.011385147121508449,
+        "seam_score": 0.8576856609811444,
+        "score": 0.5913639770342236
+      }
+    ],
+    "LISTENING": [
+      {
+        "category": "LISTENING",
+        "start_frame": 155,
+        "end_frame": 204,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.10083472112230955,
+        "p90_motion": 0.1398189903255552,
+        "face_motion": 0.17261622220277786,
+        "upper_body_motion": 0.06459583088755608,
+        "arm_motion": 0.052791057340800765,
+        "mouth_motion": 0.18927763536572456,
+        "seam_difference": 0.009438836951820372,
+        "seam_score": 0.8820145381022454,
+        "score": 0.7898252186343722
+      },
+      {
+        "category": "LISTENING",
+        "start_frame": 125,
+        "end_frame": 199,
+        "duration_seconds": 3.0,
+        "mean_motion": 0.09181924585302671,
+        "p90_motion": 0.13963085075467827,
+        "face_motion": 0.15185639227430026,
+        "upper_body_motion": 0.058214805076519646,
+        "arm_motion": 0.051335895446439586,
+        "mouth_motion": 0.17541698375095924,
+        "seam_difference": 0.008851040060365578,
+        "seam_score": 0.8893619992454302,
+        "score": 0.7771534230327679
+      },
+      {
+        "category": "LISTENING",
+        "start_frame": 70,
+        "end_frame": 119,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.07599653080999852,
+        "p90_motion": 0.08987008821126075,
+        "face_motion": 0.1134025576710701,
+        "upper_body_motion": 0.05946971744298935,
+        "arm_motion": 0.052277204915881156,
+        "mouth_motion": 0.11953010149300099,
+        "seam_difference": 0.0103903452685422,
+        "seam_score": 0.8701206841432225,
+        "score": 0.7623471058138254
+      }
+    ],
+    "LISTENING_PAUSE": [
+      {
+        "category": "LISTENING_PAUSE",
+        "start_frame": 230,
+        "end_frame": 279,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.04828512991350143,
+        "p90_motion": 0.07879535519704224,
+        "face_motion": 0.07386794786900282,
+        "upper_body_motion": 0.03535331696271896,
+        "arm_motion": 0.033438557349145415,
+        "mouth_motion": 0.0844598194770515,
+        "seam_difference": 0.008996600910185046,
+        "seam_score": 0.8875424886226869,
+        "score": 0.8568982886701589
+      },
+      {
+        "category": "LISTENING_PAUSE",
+        "start_frame": 250,
+        "end_frame": 299,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.05019783906135708,
+        "p90_motion": 0.08623306040838362,
+        "face_motion": 0.07246716670691968,
+        "upper_body_motion": 0.0353431099280715,
+        "arm_motion": 0.031766807287931444,
+        "mouth_motion": 0.10210348265245557,
+        "seam_difference": 0.009536827194912492,
+        "seam_score": 0.8807896600635938,
+        "score": 0.8499413120638438
+      },
+      {
+        "category": "LISTENING_PAUSE",
+        "start_frame": 85,
+        "end_frame": 134,
+        "duration_seconds": 2.0,
+        "mean_motion": 0.0675521142784506,
+        "p90_motion": 0.08197717248089612,
+        "face_motion": 0.10046155869960785,
+        "upper_body_motion": 0.05338148437440395,
+        "arm_motion": 0.04700930213555694,
+        "mouth_motion": 0.10569317793473601,
+        "seam_difference": 0.011385147121508449,
+        "seam_score": 0.8576856609811444,
+        "score": 0.8096478125544913
+      }
+    ]
+  },
+  "previewCodecs": {
+    "neutral_1_240-289.mp4": "mp4v",
+    "neutral_2_225-274.mp4": "mp4v",
+    "neutral_3_085-134.mp4": "mp4v",
+    "listening_1_155-204.mp4": "mp4v",
+    "listening_2_125-199.mp4": "mp4v",
+    "listening_3_070-119.mp4": "mp4v",
+    "listening_pause_1_230-279.mp4": "mp4v",
+    "listening_pause_2_250-299.mp4": "mp4v",
+    "listening_pause_3_085-134.mp4": "mp4v",
+    "comparison.mp4": "mp4v"
+  },
+  "thinkingConfigured": false,
+  "thinkingReason": "Automated motion analysis cannot prove a real thinking pose; manual review is required."
+}

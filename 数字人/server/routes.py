@@ -5,6 +5,7 @@
 import json
 import numpy as np
 import asyncio
+import uuid
 from aiohttp import web
 
 from utils.logger import logger
@@ -53,10 +54,16 @@ async def human(request):
         if params.get('interrupt'):
             avatar_session.flush_talk()
 
+        if hasattr(avatar_session, 'set_action_state'):
+            avatar_session.set_action_state('SPEAKING')
+
         datainfo = {}
+        speech_id = str(params.get('speechId') or uuid.uuid4())
+        datainfo['speechId'] = speech_id
         if params.get('tts'):  # tts 参数透传（voice, emotion 等）
             datainfo['tts'] = params.get('tts')
 
+        avatar_session.register_speech(speech_id)
         if params['type'] == 'echo':
             avatar_session.put_msg_txt(params['text'], datainfo)
         elif params['type'] == 'chat':
@@ -66,7 +73,7 @@ async def human(request):
                     None, llm_response, params['text'], avatar_session, datainfo
                 )
 
-        return json_ok()
+        return json_ok(data={'data': {'speechId': speech_id}})
     except Exception as e:
         logger.exception('human route exception:')
         return json_error(str(e))
@@ -80,8 +87,17 @@ async def interrupt_talk(request):
         avatar_session = get_session(request, sessionid)
         if avatar_session is None:
             return json_error("session not found")
-        avatar_session.flush_talk()
-        return json_ok()
+        speech_id = params.get('speechId')
+        if hasattr(avatar_session, 'interrupt_speech'):
+            result = avatar_session.interrupt_speech(speech_id)
+        else:
+            avatar_session.flush_talk()
+            result = {
+                'interrupted': True,
+                'speechId': speech_id,
+                'reason': 'legacy-output-flushed',
+            }
+        return json_ok(data={'data': result})
     except Exception as e:
         logger.exception('interrupt_talk exception:')
         return json_error(str(e))
@@ -129,8 +145,20 @@ async def set_audiotype(request):
         avatar_session = get_session(request, sessionid)
         if avatar_session is None:
             return json_error("session not found")
-        avatar_session.set_custom_state(params['audiotype'])
-        return json_ok()
+        request_id = params.get('requestId')
+        if params.get('action') is not None and hasattr(avatar_session, 'set_action_state'):
+            result = avatar_session.set_action_state(params.get('action'))
+        else:
+            applied = bool(avatar_session.set_custom_state(params['audiotype']))
+            result = {
+                'applied': applied,
+                'appliedAction': 'CUSTOM' if applied else 'NEUTRAL',
+                'reason': 'legacy-audiotype-applied' if applied else 'legacy-audiotype-unavailable',
+                'capabilities': avatar_session.get_action_capabilities()
+                    if hasattr(avatar_session, 'get_action_capabilities') else [],
+            }
+        result['requestId'] = request_id
+        return json_ok(data={'data': result})
     except Exception as e:
         logger.exception('set_audiotype exception:')
         return json_error(str(e))
@@ -156,12 +184,16 @@ async def record(request):
 
 async def is_speaking(request):
     """查询是否正在说话"""
-    params = await request.json()
-    sessionid = params.get('sessionid', 0)
-    avatar_session = get_session(request, sessionid)
-    if avatar_session is None:
-        return json_error("session not found")
-    return json_ok(data=avatar_session.is_speaking())
+    try:
+        params = await request.json()
+        sessionid = params.get('sessionid', 0)
+        avatar_session = get_session(request, sessionid)
+        if avatar_session is None:
+            return json_error("session not found")
+        return json_ok(data={'data': avatar_session.get_speech_status()})
+    except Exception as e:
+        logger.exception('is_speaking exception:')
+        return json_error(str(e))
 
 
 # ─── 路由注册 ──────────────────────────────────────────────────────────────

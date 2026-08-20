@@ -31,7 +31,8 @@ class BaseTTS:
         self.msgqueue.queue.clear()
         self.state = State.PAUSE
 
-    def put_msg_txt(self, msg: str, datainfo: dict = {}): 
+    def put_msg_txt(self, msg: str, datainfo=None):
+        datainfo = dict(datainfo or {})
         if len(msg) > 0:
             self.msgqueue.put((msg, datainfo))
 
@@ -46,7 +47,12 @@ class BaseTTS:
                 self.state = State.RUNNING
             except queue.Empty:
                 continue
-            self.txt_to_audio(msg)
+            try:
+                self.txt_to_audio(msg)
+            except Exception as error:
+                speech_id = msg[1].get('speechId') if len(msg) > 1 else None
+                logger.exception('TTS task failed:')
+                self.parent.notify_speech_error(speech_id, error)
         self.stop_tts()
         logger.info('ttsreal thread stop')
     

@@ -63,6 +63,24 @@ class RTCManager:
             configuration=RTCConfiguration(iceServers=[ice_server])
         )
         self.pcs.add(pc)
+        event_loop = asyncio.get_running_loop()
+
+        @pc.on("datachannel")
+        def on_datachannel(channel):
+            if channel.label != 'offerpilot.lifecycle':
+                return
+
+            def publish_lifecycle(event):
+                def send():
+                    if channel.readyState == 'open':
+                        channel.send(json.dumps(event))
+                event_loop.call_soon_threadsafe(send)
+
+            avatar_session.set_speech_event_publisher(publish_lifecycle)
+
+            @channel.on("close")
+            def on_close():
+                avatar_session.set_speech_event_publisher(None)
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():

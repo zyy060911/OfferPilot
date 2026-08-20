@@ -1,0 +1,32 @@
+[
+  {
+    "action": "NEUTRAL",
+    "audiotype": 2,
+    "imgpath": "data/avatars/wav2lip256_avatar1/full_imgs",
+    "startFrame": 240,
+    "endFrame": 289,
+    "loopMode": "loop",
+    "fps": 25,
+    "reviewStatus": "pending"
+  },
+  {
+    "action": "LISTENING",
+    "audiotype": 3,
+    "imgpath": "data/avatars/wav2lip256_avatar1/full_imgs",
+    "startFrame": 155,
+    "endFrame": 204,
+    "loopMode": "loop",
+    "fps": 25,
+    "reviewStatus": "pending"
+  },
+  {
+    "action": "LISTENING_PAUSE",
+    "audiotype": 4,
+    "imgpath": "data/avatars/wav2lip256_avatar1/full_imgs",
+    "startFrame": 230,
+    "endFrame": 279,
+    "loopMode": "loop",
+    "fps": 25,
+    "reviewStatus": "pending"
+  }
+]

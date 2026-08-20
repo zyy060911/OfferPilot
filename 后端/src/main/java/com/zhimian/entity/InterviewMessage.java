@@ -20,6 +20,10 @@ public class InterviewMessage {
     private Long sessionId;
     /** 关联题库ID（追问/回答沿用所属主问的题目ID） */
     private Long questionId;
+    /** 客户端完整回答标识，仅 CANDIDATE/ANSWER 消息使用。 */
+    private String answerId;
+    /** 客户端提交幂等标识，仅 CANDIDATE/ANSWER 消息使用。 */
+    private String submissionId;
     /** 第几轮 */
     private Integer roundNo;
     /** 角色: INTERVIEWER面试官 CANDIDATE考生 */

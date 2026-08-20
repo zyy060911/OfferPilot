@@ -166,6 +166,8 @@ CREATE TABLE interview_message (
     id            BIGINT      PRIMARY KEY AUTO_INCREMENT COMMENT '记录ID',
     session_id    BIGINT      NOT NULL                   COMMENT '会话ID',
     question_id   BIGINT                                 COMMENT '关联题库ID(追问可为空)',
+    answer_id     VARCHAR(64)                            COMMENT '客户端完整回答ID(仅考生回答)',
+    submission_id VARCHAR(64)                            COMMENT '客户端提交幂等ID(仅考生回答)',
     round_no      INT         NOT NULL DEFAULT 1         COMMENT '第几轮',
     role          VARCHAR(20) NOT NULL                   COMMENT '角色: INTERVIEWER面试官 CANDIDATE考生',
     msg_type      VARCHAR(20) NOT NULL DEFAULT 'MAIN'    COMMENT '类型: OPENING开场 MAIN主问 FOLLOWUP追问 ANSWER回答 SUMMARY总结',
@@ -175,7 +177,9 @@ CREATE TABLE interview_message (
     ability_tag   VARCHAR(100)                           COMMENT '能力标签',
     create_time   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_session (session_id),
-    KEY idx_round (session_id, round_no)
+    KEY idx_round (session_id, round_no),
+    UNIQUE KEY uk_session_answer (session_id, answer_id),
+    UNIQUE KEY uk_session_submission (session_id, submission_id)
 ) ENGINE=InnoDB COMMENT='面试问答记录表';
 
 -- ---------------------------------------------------------------------

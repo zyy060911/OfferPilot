@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -53,6 +54,7 @@ public class InterviewFlowService {
 
     private final InterviewSessionMapper sessionMapper;
     private final InterviewMessageMapper messageMapper;
+    private final AnswerSubmissionGuard answerSubmissionGuard;
     private final JobPositionMapper jobMapper;
     private final ResumeService resumeService;
     private final ReportService reportService;
@@ -148,8 +150,9 @@ public class InterviewFlowService {
 
     // ============================ 2. 提交回答 ============================
 
+    @Transactional
     public InterviewStep answer(Long sessionId, AnswerRequest req) {
-        InterviewSession session = requireOngoingSession(sessionId);
+        InterviewSession session = requireOngoingSessionForUpdate(sessionId);
 
         InterviewMessage parentMain = messageMapper.selectOne(
                 new LambdaQueryWrapper<InterviewMessage>()
@@ -163,8 +166,13 @@ public class InterviewFlowService {
         }
         int round = parentMain.getRoundNo();
 
-        saveMessage(sessionId, req.getQuestionId(), round, ROLE_CANDIDATE, MSG_ANSWER,
-                req.getAnswer(), parentMain.getAbilityTag());
+        boolean newlySaved = answerSubmissionGuard.saveCandidateAnswer(
+                sessionId, round, req, parentMain.getAbilityTag());
+        if (!newlySaved) {
+            log.info("[回答幂等] 忽略重复提交 sessionId={}, answerId={}, submissionId={}",
+                    sessionId, req.getAnswerId(), req.getSubmissionId());
+            return replayAnswerStep(session, req.getQuestionId());
+        }
 
         SkillQuestion question = skillQuestionMapper.selectById(req.getQuestionId());
         String abilityTag = parentMain.getAbilityTag();
@@ -195,6 +203,24 @@ public class InterviewFlowService {
         }
 
         step.setNextAction(hasRemainingQuestions(session) ? ACTION_NEXT : ACTION_FINISHABLE);
+        return step;
+    }
+
+    private InterviewStep replayAnswerStep(InterviewSession session, Long questionId) {
+        InterviewMessage followup = messageMapper.selectOne(
+                new LambdaQueryWrapper<InterviewMessage>()
+                        .eq(InterviewMessage::getSessionId, session.getId())
+                        .eq(InterviewMessage::getQuestionId, questionId)
+                        .eq(InterviewMessage::getMsgType, MSG_FOLLOWUP)
+                        .orderByDesc(InterviewMessage::getId)
+                        .last("LIMIT 1"));
+        InterviewStep step = new InterviewStep();
+        if (followup != null) {
+            step.setNextAction(ACTION_FOLLOWUP);
+            step.setFollowupQuestion(followup.getContent());
+        } else {
+            step.setNextAction(hasRemainingQuestions(session) ? ACTION_NEXT : ACTION_FINISHABLE);
+        }
         return step;
     }
 
@@ -424,6 +450,14 @@ public class InterviewFlowService {
 
     private InterviewSession requireOngoingSession(Long sessionId) {
         InterviewSession session = sessionMapper.selectById(sessionId);
+        if (session == null) throw new BizException("会话不存在");
+        if (!session.getUserId().equals(UserContext.getUserId())) throw new BizException("无权操作该会话");
+        if (!STATUS_ONGOING.equals(session.getStatus())) throw new BizException("面试已结束");
+        return session;
+    }
+
+    private InterviewSession requireOngoingSessionForUpdate(Long sessionId) {
+        InterviewSession session = sessionMapper.selectByIdForUpdate(sessionId);
         if (session == null) throw new BizException("会话不存在");
         if (!session.getUserId().equals(UserContext.getUserId())) throw new BizException("无权操作该会话");
         if (!STATUS_ONGOING.equals(session.getStatus())) throw new BizException("面试已结束");

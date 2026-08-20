@@ -34,6 +34,8 @@ from threading import Thread, Event
 from io import BytesIO
 import soundfile as sf
 import asyncio
+import threading
+from datetime import datetime, timezone
 from enum import Enum
 import json
 import importlib
@@ -68,6 +70,12 @@ class BaseAvatar:
         self.sessionid = self.opt.sessionid
 
         self.speaking = False
+        self.rendering_speech = False
+        self._speech_lock = threading.RLock()
+        self._speech_id = None
+        self._speech_updated_at = self._utc_now()
+        self._speech_event_publisher = None
+        self._custom_lock = threading.RLock()
         self.recording = False
         self._record_video_pipe = None
         self._record_audio_pipe = None
@@ -78,6 +86,9 @@ class BaseAvatar:
         self.custom_audio_cycle = {}
         self.custom_audio_index = {}
         self.custom_index = {}
+        self.custom_loop_modes = {}
+        self.custom_action_types = {}
+        self.active_action = 'NEUTRAL'
         # self.custom_opt = {}
         self.__loadcustom()
 
@@ -123,7 +134,32 @@ class BaseAvatar:
             logger.error(f"Output transport {opt.transport} not found in map.")
 
     # 如果系统没有使用 pipeline，或者为了向后兼容原来的 ttsreal.py
-    def put_msg_txt(self, msg, datainfo:dict={}):
+    @staticmethod
+    def _utc_now():
+        return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+    def set_speech_event_publisher(self, publisher):
+        """设置 WebRTC 生命周期事件发布器；publisher 可从媒体线程调用。"""
+        with self._speech_lock:
+            self._speech_event_publisher = publisher
+
+    def register_speech(self, speech_id: str):
+        """在 TTS 入队前登记当前播报，使旧任务的迟到事件可被识别。"""
+        with self._speech_lock:
+            self._speech_id = speech_id
+            self.speaking = False
+            self._speech_updated_at = self._utc_now()
+
+    def get_speech_status(self):
+        with self._speech_lock:
+            return {
+                'speaking': bool(self.speaking),
+                'speechId': self._speech_id,
+                'updatedAt': self._speech_updated_at,
+            }
+
+    def put_msg_txt(self, msg, datainfo=None):
+        datainfo = dict(datainfo or {})
         if hasattr(self, 'tts'):
             self.tts.put_msg_txt(msg, datainfo)
     
@@ -186,38 +222,144 @@ class BaseAvatar:
             self.tts.flush_talk()
         if hasattr(self, 'asr') and hasattr(self.asr, 'flush_talk'):
             self.asr.flush_talk()
-        self.custom_audiotype = 0  
+        with self._custom_lock:
+            self.custom_audiotype = 0
+            self.active_action = 'NEUTRAL'
 
     # def flush(self):
     #     self.flush_talk()
 
     def is_speaking(self) -> bool:
-        return self.speaking
+        return self.get_speech_status()['speaking']
     
     def __loadcustom(self):
         if not hasattr(self.opt, 'customopt') or not self.opt.customopt:
             return
         for item in self.opt.customopt:
             logger.info(item)
+            review_status = str(item.get('reviewStatus', 'pending')).strip().lower()
+            if review_status != 'approved':
+                logger.info(
+                    'custom action not loaded; reviewStatus=%s action=%s',
+                    review_status, item.get('action'))
+                continue
             input_img_list = glob.glob(os.path.join(item['imgpath'], '*.[jpJP][pnPN]*[gG]'))
             input_img_list = sorted(input_img_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
+            if not input_img_list:
+                logger.warning('custom action skipped; no image frames: %s', item.get('imgpath'))
+                continue
+            try:
+                start_frame = int(item.get('startFrame', 0))
+                end_frame = int(item.get('endFrame', len(input_img_list) - 1))
+            except (TypeError, ValueError):
+                logger.warning('custom action skipped; frame range must be integers: %s', item)
+                continue
+            if not 0 <= start_frame <= end_frame < len(input_img_list):
+                logger.warning(
+                    'custom action skipped; invalid frame range %s-%s for %s frames',
+                    start_frame, end_frame, len(input_img_list))
+                continue
+            input_img_list = input_img_list[start_frame:end_frame + 1]
+            loop_mode = str(item.get('loopMode', 'ping-pong')).strip().lower()
+            if loop_mode not in ('loop', 'ping-pong'):
+                logger.warning('custom action skipped; unsupported loopMode: %s', loop_mode)
+                continue
             self.custom_img_cycle[item['audiotype']] = read_imgs(input_img_list)
+            self.custom_loop_modes[item['audiotype']] = loop_mode
             if item.get('audiopath'):
-                self.custom_audio_cycle[item['audiotype']], sample_rate = sf.read(item['audiopath'], dtype='float32')
-                self.custom_audio_index[item['audiotype']] = 0
+                if os.path.isfile(item['audiopath']):
+                    audio, sample_rate = sf.read(item['audiopath'], dtype='float32')
+                    if audio.ndim > 1:
+                        audio = audio.mean(axis=1)
+                    if sample_rate != self.sample_rate:
+                        logger.info('resampling custom action audio: %sHz -> %sHz', sample_rate, self.sample_rate)
+                        audio = resampy.resample(audio, sample_rate, self.sample_rate)
+                    self.custom_audio_cycle[item['audiotype']] = np.asarray(audio, dtype=np.float32)
+                    self.custom_audio_index[item['audiotype']] = 0
+                else:
+                    logger.warning('custom action audio missing; loading as silent loop: %s', item['audiopath'])
             self.custom_index[item['audiotype']] = 0
+            action = str(item.get('action') or '').strip().upper()
+            if action:
+                self.custom_action_types[action] = item['audiotype']
             # self.custom_opt[item['audiotype']] = item
 
     def init_customindex(self):
-        self.custom_audiotype = 0
-        for key in self.custom_audio_index:
-            self.custom_audio_index[key] = 0
-        for key in self.custom_index:
-            self.custom_index[key] = 0
+        with self._custom_lock:
+            self.custom_audiotype = 0
+            self.active_action = 'NEUTRAL'
+            for key in self.custom_audio_index:
+                self.custom_audio_index[key] = 0
+            for key in self.custom_index:
+                self.custom_index[key] = 0
 
     def notify(self, eventpoint:dict):
-        if eventpoint and eventpoint.get('status'):
-            logger.info("notify:%s", eventpoint)
+        if not eventpoint or eventpoint.get('status') not in ('start', 'end', 'error', 'interrupted'):
+            return
+
+        status = eventpoint['status']
+        speech_id = eventpoint.get('speechId')
+        timestamp = self._utc_now()
+        with self._speech_lock:
+            # A lifecycle event belongs only to the speech registered before TTS
+            # enqueue. Terminal events arriving after that context was cleared are stale.
+            stale = bool(speech_id and speech_id != self._speech_id)
+            if not stale:
+                if speech_id:
+                    self._speech_id = speech_id
+                self.speaking = status == 'start'
+                self._speech_updated_at = timestamp
+                if status in ('end', 'error', 'interrupted'):
+                    self.speaking = False
+                    self._speech_id = None
+            publisher = self._speech_event_publisher
+
+        lifecycle_event = {
+            'event': {
+                'start': 'speech-started',
+                'end': 'speech-ended',
+                'error': 'speech-error',
+                'interrupted': 'speech-interrupted',
+            }[status],
+            'speechId': speech_id,
+            'timestamp': timestamp,
+            'stale': stale,
+        }
+        if eventpoint.get('error'):
+            lifecycle_event['error'] = str(eventpoint['error'])
+        logger.info("notify:%s", lifecycle_event)
+        if publisher:
+            try:
+                publisher(lifecycle_event)
+            except Exception:
+                logger.exception('speech lifecycle publisher failed:')
+
+    def notify_speech_error(self, speech_id, error):
+        self.notify({'status': 'error', 'speechId': speech_id, 'error': error})
+
+    def interrupt_speech(self, expected_speech_id=None):
+        """Stop only the currently registered speech and publish a confirmed lifecycle event."""
+        with self._speech_lock:
+            active_speech_id = self._speech_id
+            if not active_speech_id:
+                return {
+                    'interrupted': False,
+                    'speechId': None,
+                    'reason': 'no-active-speech',
+                }
+            if expected_speech_id and expected_speech_id != active_speech_id:
+                return {
+                    'interrupted': False,
+                    'speechId': active_speech_id,
+                    'reason': 'speech-id-mismatch',
+                }
+            self.flush_talk()
+            self.notify({'status': 'interrupted', 'speechId': active_speech_id})
+            return {
+                'interrupted': True,
+                'speechId': active_speech_id,
+                'reason': 'output-pipeline-flushed',
+            }
 
     def start_recording(self):
         if self.recording:
@@ -277,21 +419,103 @@ class BaseAvatar:
     #         return size - res - 1 
     
     def get_custom_audio_stream(self, audiotype):
-        idx = self.custom_audio_index[audiotype]
-        stream = self.custom_audio_cycle[audiotype][idx:idx+self.chunk]
-        self.custom_audio_index[audiotype] += self.chunk
-        if self.custom_audio_index[audiotype] >= self.custom_audio_cycle[audiotype].shape[0]:
-            self.custom_audiotype = 1
-        return stream
+        with self._custom_lock:
+            if audiotype not in self.custom_audio_cycle:
+                return np.zeros(self.chunk, dtype=np.float32)
+            idx = self.custom_audio_index[audiotype]
+            stream = self.custom_audio_cycle[audiotype][idx:idx+self.chunk]
+            self.custom_audio_index[audiotype] += self.chunk
+            if self.custom_audio_index[audiotype] >= self.custom_audio_cycle[audiotype].shape[0]:
+                self.custom_audiotype = 1
+                self.active_action = 'NEUTRAL'
+            if stream.shape[0] < self.chunk:
+                stream = np.pad(stream, (0, self.chunk - stream.shape[0]))
+            return stream
     
     def set_custom_state(self, audiotype, reinit=True):
-        print('set_custom_state:', audiotype)
-        if self.custom_audio_index.get(audiotype) is None:
-            return
-        self.custom_audiotype = audiotype
-        if reinit:
-            self.custom_audio_index[audiotype] = 0
-            self.custom_index[audiotype] = 0
+        logger.info('set_custom_state: %s', audiotype)
+        try:
+            audiotype = int(audiotype)
+        except (TypeError, ValueError):
+            return False
+        with self._custom_lock:
+            if audiotype not in (0, 1) and audiotype not in self.custom_img_cycle:
+                return False
+            self.custom_audiotype = audiotype
+            if reinit:
+                if audiotype in self.custom_audio_index:
+                    self.custom_audio_index[audiotype] = 0
+                if audiotype in self.custom_index:
+                    self.custom_index[audiotype] = 0
+            return True
+
+    def get_action_capabilities(self):
+        with self._custom_lock:
+            return sorted({'NEUTRAL', 'SPEAKING', *self.custom_action_types.keys()})
+
+    def set_action_state(self, action):
+        requested = str(action or 'NEUTRAL').strip().upper()
+        capabilities = self.get_action_capabilities()
+        with self._speech_lock:
+            speech_in_flight = bool(self._speech_id)
+
+        if requested == 'SPEAKING':
+            self.set_custom_state(0)
+            with self._custom_lock:
+                self.active_action = 'SPEAKING'
+            return {
+                'applied': True,
+                'appliedAction': 'SPEAKING',
+                'reason': 'tts-lipsync-controls-speaking',
+                'capabilities': capabilities,
+            }
+        if requested == 'ERROR':
+            self.set_custom_state(0)
+            with self._custom_lock:
+                self.active_action = 'NEUTRAL'
+            return {
+                'applied': False,
+                'appliedAction': 'NEUTRAL',
+                'reason': 'error-safe-neutral',
+                'capabilities': capabilities,
+            }
+        if speech_in_flight:
+            return {
+                'applied': False,
+                'appliedAction': 'SPEAKING',
+                'reason': 'speech-in-flight-protected',
+                'capabilities': capabilities,
+            }
+
+        audiotype = self.custom_action_types.get(requested)
+        if audiotype is not None and self.set_custom_state(audiotype):
+            with self._custom_lock:
+                self.active_action = requested
+            return {
+                'applied': True,
+                'appliedAction': requested,
+                'reason': 'custom-action-loaded',
+                'capabilities': capabilities,
+            }
+        if requested == 'NEUTRAL':
+            self.set_custom_state(0)
+            with self._custom_lock:
+                self.active_action = 'NEUTRAL'
+            return {
+                'applied': True,
+                'appliedAction': 'NEUTRAL',
+                'reason': 'base-idle-cycle',
+                'capabilities': capabilities,
+            }
+        self.set_custom_state(0)
+        with self._custom_lock:
+            self.active_action = 'NEUTRAL'
+        return {
+            'applied': False,
+            'appliedAction': 'NEUTRAL',
+            'reason': 'action-resource-unavailable',
+            'capabilities': capabilities,
+        }
 
     # ========================== 核心渲染及 Pipeline 桥接 ==========================
     def get_avatar_length(self):
@@ -358,6 +582,12 @@ class BaseAvatar:
 
     def process_frames(self,quit_event):
         enable_transition = False  # 设置为False禁用过渡效果，True启用
+        smooth_state_transition = True
+        state_transition_duration = 0.12
+        state_transition_started_at = 0.0
+        state_transition_source = None
+        last_output_frame = None
+        last_output_type = None
         
         _last_speaking = False
         _transition_start = time.time()
@@ -377,17 +607,26 @@ class BaseAvatar:
             
             # 检测状态变化
             current_speaking = not (audio_frames[0].type!=0 and audio_frames[1].type!=0)
+            output_type = 0 if current_speaking else audio_frames[0].type
+            if output_type != last_output_type:
+                state_transition_started_at = time.time()
+                state_transition_source = last_output_frame.copy() if last_output_frame is not None else None
+                last_output_type = output_type
             if current_speaking != _last_speaking:
                 logger.info(f"状态切换：{'说话' if _last_speaking else '静音'} → {'说话' if current_speaking else '静音'}")
                 _transition_start = time.time()
             _last_speaking = current_speaking
 
             if audio_frames[0].type!=0 and audio_frames[1].type!=0: #全为静音数据，只需要取fullimg
-                self.speaking = False
+                self.rendering_speech = False
                 audiotype = audio_frames[0].type
                 if self.custom_index.get(audiotype) is not None: #有自定义视频
-                    mirindex = mirror_index(len(self.custom_img_cycle[audiotype]),self.custom_index[audiotype])
-                    target_frame = self.custom_img_cycle[audiotype][mirindex]
+                    frame_count = len(self.custom_img_cycle[audiotype])
+                    if self.custom_loop_modes.get(audiotype) == 'loop':
+                        frame_index = self.custom_index[audiotype] % frame_count
+                    else:
+                        frame_index = mirror_index(frame_count, self.custom_index[audiotype])
+                    target_frame = self.custom_img_cycle[audiotype][frame_index]
                     self.custom_index[audiotype] += 1
                 else:
                     target_frame = self.frame_list_cycle[idx]
@@ -404,7 +643,7 @@ class BaseAvatar:
                 else:
                     combine_frame = target_frame
             else:
-                self.speaking = True
+                self.rendering_speech = True
                 try:
                     current_frame = self.paste_back_frame(res_frame,idx)
                 except Exception as e:
@@ -421,6 +660,15 @@ class BaseAvatar:
                     _last_speaking_frame = combine_frame.copy()
                 else:
                     combine_frame = current_frame
+
+            if smooth_state_transition and state_transition_source is not None:
+                elapsed = time.time() - state_transition_started_at
+                if elapsed < state_transition_duration and state_transition_source.shape == combine_frame.shape:
+                    alpha = min(1.0, elapsed / state_transition_duration)
+                    combine_frame = cv2.addWeighted(state_transition_source, 1 - alpha, combine_frame, alpha, 0)
+                else:
+                    state_transition_source = None
+            last_output_frame = combine_frame.copy()
 
             cv2.putText(combine_frame, "LiveTalking", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (128,128,128), 1)
             

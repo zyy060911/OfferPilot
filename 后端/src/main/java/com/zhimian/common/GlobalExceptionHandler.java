@@ -3,6 +3,7 @@ package com.zhimian.common;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.validation.BindException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -34,6 +35,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public Result<Void> handleUploadSize(MaxUploadSizeExceededException e) {
         return Result.error(400, "文件大小不能超过10MB");
+    }
+
+    /** 数据库最终幂等保护触发时返回稳定业务响应，不泄露索引或 SQL 信息。 */
+    @ExceptionHandler(DuplicateKeyException.class)
+    public Result<Void> handleDuplicateKey(DuplicateKeyException e) {
+        log.info("数据库唯一约束阻止重复写入");
+        return Result.error(409, "请求已处理或正在处理中，请勿重复提交");
     }
 
     @ExceptionHandler(Exception.class)
